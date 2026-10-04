@@ -1,0 +1,5 @@
+ode_modules/
+dist/
+.astro/
+*.log
+.DS_Store

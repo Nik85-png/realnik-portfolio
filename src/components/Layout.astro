@@ -1,0 +1,54 @@
+---
+import Nav from './Nav.astro';
+import Footer from './Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  current?: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} — Nikunj Prajapati</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#F2EFE8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <!-- Prevent theme flash: apply saved/system theme before paint -->
+    <script is:inline>
+      (function () {
+        try {
+          var saved = localStorage.getItem('realnik-theme');
+          var theme = saved ||
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Azeret+Mono:ital,wght@0,300..700;1,300..700&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="bg-grain" aria-hidden="true"></div>
+    <Nav />
+    <slot />
+    <Footer />
+    <script src="../scripts/main.js"></script>
+  </body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>

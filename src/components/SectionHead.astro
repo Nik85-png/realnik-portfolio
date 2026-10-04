@@ -1,0 +1,18 @@
+---
+interface Props {
+  num: string;
+  title: string;
+  lede?: string;
+  reveal?: boolean;
+}
+
+const { num, title, lede, reveal = true } = Astro.props;
+---
+
+<div class="section-head" data-reveal={reveal ? '1' : undefined}>
+  <div>
+    <p class="section-num">{num}</p>
+    <h2 set:html={title} />
+  </div>
+  {lede && <p class="lede" set:html={lede} />}
+</div>

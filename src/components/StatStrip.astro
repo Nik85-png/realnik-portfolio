@@ -1,0 +1,39 @@
+---
+interface Stat {
+  value: string;      // display value, e.g. "2,008"
+  count?: number;     // numeric target for count-up animation
+  decimals?: number;
+  prefix?: string;
+  suffix?: string;
+  label: string;
+  sub?: string;
+}
+
+interface Props {
+  stats: Stat[];
+}
+
+const { stats } = Astro.props;
+---
+
+<div class="stat-strip" role="list">
+  {stats.map((stat, i) => (
+    <div class="stat" role="listitem" data-reveal={String(Math.min(i, 4))}>
+      {stat.count !== undefined ? (
+        <p
+          class="k"
+          data-count={stat.count}
+          data-decimals={stat.decimals ?? 0}
+          data-prefix={stat.prefix ?? ''}
+          data-suffix={stat.suffix ?? ''}
+        >
+          0
+        </p>
+      ) : (
+        <p class="k">{stat.value}</p>
+      )}
+      <p class="lbl">{stat.label}</p>
+      {stat.sub && <p class="sub">{stat.sub}</p>}
+    </div>
+  ))}
+</div>
