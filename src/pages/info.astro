@@ -86,7 +86,7 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
 
 <Layout
   title="About · Curriculum Vitae"
-  description="Nikunj Prajapati: MSc Data Analytics postgraduate, healthcare admin professional, behavioural data explorer. Full work history, skills and contact."
+  description="Nikunj Prajapati: MSc Data Analytics postgraduate, service manager, behavioural data explorer. Full work history, skills and contact."
 >
   <!-- ============ BIO HERO ============ -->
   <header class="bio-hero wrap">
@@ -269,7 +269,8 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
       <form
         class="contact-form"
         data-reveal="1"
-        onsubmit="event.preventDefault(); this.querySelector('.form-done').hidden = false; this.querySelector('.form-fields').style.display='none';"
+        data-endpoint="/api/contact"
+        novalidate
       >
         <div class="form-fields">
           <label>
@@ -281,6 +282,10 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
             <input type="email" name="email" required autocomplete="email" />
           </label>
           <label class="full">
+            <span>Topic</span>
+            <input type="text" name="topic" placeholder="Project, question, or just say hello" />
+          </label>
+          <label class="full">
             <span>Message</span>
             <textarea name="message" rows="5" required></textarea>
           </label>
@@ -288,7 +293,7 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
             Send message <span class="arrow" aria-hidden="true">&rarr;</span>
           </button>
         </div>
-        <p class="form-done" hidden>Thanks — I'll reply within 48h.</p>
+        <div class="form-status" hidden></div>
       </form>
       <ul class="contact-tags" data-reveal="2">
         <li class="tag"><a href={`mailto:${email}`}>{email}</a></li>
@@ -577,12 +582,19 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
     border-top: 1px solid var(--rule);
     margin-top: clamp(72px, 9vw, 120px);
     padding-block: clamp(64px, 8vw, 110px);
+    padding-bottom: clamp(64px, 8vw, 110px);
+  }
+
+  .contact-inner {
+    max-width: 720px;
+    margin-inline: auto;
+    padding-block: clamp(40px, 5vw, 64px);
+    text-align: center;
   }
 
   .contact-inner h2 {
-    font-size: clamp(30px, 4.4vw, 60px);
-    text-align: center;
-    margin-bottom: clamp(28px, 4vw, 48px);
+    font-size: clamp(28px, 4vw, 52px);
+    margin-bottom: 26px;
   }
 
   .contact-inner h2 em {
@@ -612,7 +624,9 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
     color: var(--fg-muted);
   }
 
-  .form-fields .full { grid-column: 1 / -1; }
+  .form-fields .full {
+    grid-column: 1 / -1;
+  }
 
   .form-fields input,
   .form-fields textarea {
@@ -630,6 +644,20 @@ const methods = ['Statistical Modelling', 'Predictive Analytics', 'Data Cleaning
   .form-fields textarea:focus {
     outline: 2px solid var(--theme-primary);
     outline-offset: 1px;
+  }
+
+  .form-status {
+    display: block;
+    width: 100%;
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 20px;
+    padding: 24px;
+    margin-top: 18px;
+    border: 1px solid var(--theme-primary);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--fg);
   }
 
   .form-done {

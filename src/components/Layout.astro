@@ -46,6 +46,42 @@ const { title, description } = Astro.props;
     <slot />
     <Footer />
     <script src="../scripts/main.js"></script>
+    <script is:inline>
+      // Minimal progressive-enhancement form submitter for the contact form.
+      (function () {
+        var forms = document.querySelectorAll('form[data-endpoint]');
+        if (!forms.length) return;
+        Array.from(forms).forEach(function (form) {
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var status = form.querySelector('.form-status');
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+            if (status) { status.hidden = false; status.textContent = 'Sending…'; }
+            fetch(form.getAttribute('data-endpoint'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(Object.fromEntries(new FormData(form))),
+            })
+              .then(function (r) { return r.json().catch(function () { return {}; }); })
+              .then(function (json) {
+                if (json && json.ok) {
+                  if (status) { status.hidden = false; status.textContent = 'Thanks — I will reply within 48h.'; }
+                  if (form) { form.querySelector('.form-fields') && (form.querySelector('.form-fields').style.display = 'none'); }
+                  form.reset();
+                } else {
+                  if (status) { status.hidden = false; status.textContent = 'Something went wrong — please email me directly.'; }
+                  if (btn) { btn.disabled = false; btn.textContent = 'Send message'; }
+                }
+              })
+              .catch(function () {
+                if (status) { status.hidden = false; status.textContent = 'Something went wrong — please email me directly.'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Send message'; }
+              });
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
 

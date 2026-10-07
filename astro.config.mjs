@@ -5,5 +5,6 @@ export default defineConfig({
   trailingSlash: 'always',
   build: { format: 'directory' },
   server: { port: 4321 },
+
   markdown: { shikiConfig: { theme: 'github-dark-default' } }
 });
