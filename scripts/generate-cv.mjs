@@ -105,7 +105,7 @@ section('Profile');
 need(60);
 doc.font('Helvetica').fontSize(9.5).fillColor(INK);
 doc.text(
-  'MSc Data Analytics postgraduate moving from mathematics education and healthcare administration into clinical and behavioural analytics. Dissertation work on leakage-audited heart-failure outcome prediction (2,008 patients, 143 predictors) plus a 766-trial behavioural card-sorting analysis with an interactive viewer. Day-to-day experience in care-record compliance, log validation and audit readiness. Looking for graduate data-analytics roles from 2026.',
+  'MSc Data Analytics (London Metropolitan University, July 2026) moving from mathematics and education into clinical and behavioural analytics. Dissertation work on leakage-audited heart-failure outcome prediction (2,008 patients, 143 predictors) plus a patient-grouped MIMIC-IV retrain showing GCS components add +0.0138 AUROC at 28 days, and an 845-trial behavioural card-sorting analysis with an interactive viewer. Day-to-day experience in care-record compliance, log validation and audit readiness. Available now for graduate data-analytics roles in London.',
   ML,
   y,
   { width: CW, lineGap: 3, align: 'justify' }
@@ -114,12 +114,12 @@ y = doc.y;
 
 // ================= EDUCATION =================
 section('Education');
-entry('Sep 2025 – May 2026', 'MSc Data Analytics (expected completion July 2026)', 'London Metropolitan University', [
-  'Dissertation: HF-RISK — predicting heart-failure outcomes with machine learning.',
+entry('Sep 2025 – Jul 2026', 'MSc Data Analytics (completed July 2026)', 'London Metropolitan University', [
+  'Dissertation: HF-RISK — predicting heart-failure outcomes with machine learning, with a full leakage audit and a patient-grouped MIMIC-IV extension.',
   'Modules: statistical modelling, predictive analytics, data visualisation, databases.',
 ]);
-entry('Jun 2021', 'BSc Mathematics', 'Gujarat University', []);
-entry('Apr 2023', 'BSc Education', 'Gujarat University', []);
+entry('Jun 2021', 'B.Sc. Mathematics', 'Gujarat University', []);
+entry('Apr 2023', 'Bachelor of Education', 'Gujarat University', []);
 
 // ================= EXPERIENCE =================
 section('Experience');
@@ -132,7 +132,7 @@ entry('Nov 2025 – May 2026', 'AI Response Evaluator', 'TMX China', [
   'Systematised recurring failure patterns and fed them back to the model team.',
 ]);
 entry('Oct 2025 – present', 'Card-Sorting Analysis Intern (under Dr. Subeksha Shrestha, Module Leader)', 'London Metropolitan University', [
-  'Cleaned and analysed 766 recorded trials of spatial card sorting (714 usable after validation).',
+  'Cleaned and analysed 845 recorded trials of spatial card sorting (714 usable after validation).',
   'Built an interactive analysis viewer: nine views including retry tracing, progression and recovery.',
 ]);
 entry('May 2025 – Apr 2026', 'Administration', 'PHC Home Care', [
@@ -146,15 +146,19 @@ entry('Aug 2025', 'Community Volunteer', 'Metropolitan Police', [
 
 // ================= PROJECTS =================
 section('Selected Projects');
-entry('Feb – Mar 2025', 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning', 'MSc Dissertation', [
-  '2,008 Zhang/PhysioNet heart-failure records; 143 final predictors after a full leakage audit.',
-  'Five models, four horizons: Random Forest 0.781 (28-day) and 0.839 (3-month); XGBoost 0.710 (6-month mortality) and 0.650 (6-month readmission).',
-  'Leakage audit cut the headline 6-month AUROC from 0.819 to 0.710 by removing discharge-day and outcome-proxy features.',
-  'Direct transfer to MIMIC-IV (42,990 admissions): 0.599 at six months — a transportability check, not a clinical claim.',
-  'SHAP explainability maps a cardiorenal axis; Streamlit prototype validated with UK cardiologists.',
-]);
+entry('Feb – Mar 2025',  'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+  'MSc Dissertation + 2026 extension',
+  [
+    '2,008 Zhang/PhysioNet heart-failure records; 143 final predictors after a full leakage audit.',
+    'Five models, four horizons: Random Forest 0.781 (28-day) and 0.839 (3-month); XGBoost 0.710 (6-month mortality) and 0.650 (6-month readmission).',
+    'Leakage audit cut the headline 6-month AUROC from 0.819 to 0.710 by removing discharge-day and outcome-proxy features.',
+    'Direct transfer to MIMIC-IV (42,990 admissions): 0.599 at six months — a transportability check, not a clinical claim.',
+    '2026 extension: patient-grouped retrain inside MIMIC-IV (18,890 patients) — GCS components add +0.0138 AUROC at 28 days and +0.0086 at six months, and still +0.0104 on top of an independent ICU-stay control.',
+    'GCS left missing where it was never charted (72% of admissions) rather than imputed as a normal score; SHAP maps a cardiorenal axis.',
+  ]
+);
 entry('Oct 2025 – present', 'Interactive Card Sorting — Spatial Organization & Cognitive Strategy', 'Behavioural Analysis', [
-  '766 recorded trials (714 usable) of arranging KQJ blank cards on an 8×8 board.',
+  '845 recorded trials (714 usable) of arranging KQJ blank cards on an 8×8 board.',
   'Finding: organisation beats raw effort; blank cards act as scaffolding; recovery is uncommon but informative.',
   'Vanilla JavaScript + Plotly interactive viewer with nine analysis modes and a trial picker.',
 ]);
@@ -189,7 +193,7 @@ rule(y, RULE, 0.7);
 y += 10;
 doc.font('Helvetica').fontSize(7.5).fillColor(MUTED);
 doc.text(
-  'Nikunj Prajapati — CV · Generated 2026 · Available for graduate data-analytics roles · References on request',
+  'Nikunj Prajapati — CV · Available now for graduate data-analytics roles in London · References on request',
   ML,
   y,
   { width: CW }

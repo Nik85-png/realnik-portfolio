@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "test": "node scripts/smoke-test.mjs",
+    "self-host-fonts": "node scripts/self-host-fonts.mjs",
+    "build": "astro build && node scripts/minify-data.mjs",
     "heroku-postbuild": "npm run build",
     "start": "node server.mjs",
     "preview": "astro preview"
@@ -17,5 +19,8 @@
     "astro": "5.18.2",
     "pdfkit": "^0.20.2",
     "resend": "^6.32.1"
+  },
+  "devDependencies": {
+    "@astrojs/sitemap": "^3.7.4"
   }
 }

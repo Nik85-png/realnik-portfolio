@@ -9,7 +9,7 @@ const projects = [
     desc: 'Leakage-clean ML pipeline on 2,008 patients: five models compared, 143 final predictors, SHAP-driven explainability.',
     tags: ['MSc Dissertation', 'Random Forest', 'XGBoost', 'SHAP', 'MIMIC-IV'],
     meta: ['2026', 'London Met', 'Clinical ML'],
-    outcome: 'Primary outcome: 6-month mortality at 0.710 AUROC on the held-out Zhang cohort and 0.599 on MIMIC-IV without retraining.',
+    outcome: 'Primary outcome: 6-month mortality at 0.710 AUROC on the held-out Zhang cohort and 0.599 on MIMIC-IV without retraining. The 2026 extension retrained inside MIMIC-IV with a patient-grouped split: GCS components added +0.0138 AUROC at 28 days and +0.0104 beyond an ICU-stay control at six months.',
     href: '/hf-risk/',
     cta: 'Read',
   },
@@ -19,18 +19,54 @@ const projects = [
     desc: 'How people arrange cards on an 8×8 board — across 845 recorded trials, with an interactive viewer for retry tracing.',
     tags: ['Behavioural', 'Python', 'Interactive viewer'],
     meta: ['2026', 'London Met', 'Behavioural'],
-    outcome: 'Organized layouts correlated with completion; strategy quality added explanatory power beyond time-on-task. Live explorer for retry tracing.',
+    outcome: 'Organised layouts correlated with completion; strategy quality added explanatory power beyond time-on-task. Live explorer for retry tracing.',
     href: '/cards-analysis/',
     cta: 'Open',
   },
 ];
 
 const filters = ['All', 'Clinical ML', 'Behavioural', '2026'];
+
+// Structured data: a collection of the work, so the two case studies are
+// discoverable from the projects index as well as from the homepage.
+const SITE = 'https://realnik.co.uk';
+const schema = {
+  '@type': 'CollectionPage',
+  '@id': `${SITE}/projects/#webpage`,
+  url: `${SITE}/projects/`,
+  name: 'Selected work — Nikunj Prajapati',
+  description:
+    'Clinical machine-learning and behavioural analysis projects, each documented end to end.',
+  about: { '@id': `${SITE}/#person` },
+  isPartOf: { '@id': `${SITE}/#website` },
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: projects.map((p, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      item: {
+        '@type': i === 0 ? 'ScholarlyArticle' : 'CreativeWork',
+        name: p.title,
+        description: p.outcome,
+        url: new URL(p.href, SITE).href,
+        author: { '@id': `${SITE}/#person` },
+      },
+    })),
+  },
+};
 ---
 
 <Layout
   title="Selected Work"
   description="A short, honest list of projects by Nikunj Prajapati — clinical ML and behavioural analysis, with results that survive scrutiny."
+  keywords={[
+    'data analytics projects',
+    'heart failure prediction machine learning project',
+    'card sorting psychology project',
+    'clinical machine learning portfolio',
+    'behavioural data analysis project',
+  ]}
+  schema={schema}
 >
   <header class="page-hero wrap">
     <p class="eyebrow" data-reveal>Projects</p>
@@ -94,10 +130,11 @@ const filters = ['All', 'Clinical ML', 'Behavioural', '2026'];
           its limits.
         </p>
         <p>
-          More is coming: clinical survival modelling and behavioural
-          tooling from the MSc, plus the day-job analytics work that pays
-          the rent. I'd rather publish four honest pieces than forty
-          polished claims.
+          More is coming: the MIMIC-IV transport and GCS work is being
+          written up as a manuscript, the card-sorting study is heading
+          for its own write-up, plus the day-job analytics that pays the
+          rent. I'd rather publish four honest pieces than forty polished
+          claims.
         </p>
       </div>
     </div>

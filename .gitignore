@@ -4,3 +4,6 @@ node_modules/
 .DS_Store
 .env
 .env.*
+
+# Build output — the deploy targets rebuild this themselves.
+dist/

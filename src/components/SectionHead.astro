@@ -4,15 +4,17 @@ interface Props {
   title: string;
   lede?: string;
   reveal?: boolean;
+  /** Anchor id for the <h2> — lets a section point aria-labelledby at it. */
+  id?: string;
 }
 
-const { num, title, lede, reveal = true } = Astro.props;
+const { num, title, lede, reveal = true, id } = Astro.props;
 ---
 
 <div class="section-head" data-reveal={reveal ? '1' : undefined}>
   <div>
     <p class="section-num">{num}</p>
-    <h2 set:html={title} />
+    <h2 id={id} set:html={title} />
   </div>
   {lede && <p class="lede" set:html={lede} />}
 </div>

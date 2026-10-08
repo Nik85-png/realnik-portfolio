@@ -1,3 +1,5 @@
+@import './fonts.css';
+
 /* ============================================================
    realnik.co.uk — design system
    Light-cream default · persistent dark theme
@@ -119,7 +121,39 @@ body::after {
 
 img { max-width: 100%; display: block; }
 
+/* The HTML hidden attribute must always beat component display rules —
+   otherwise an empty form-status box renders below the contact form. */
+[hidden] { display: none !important; }
+
 a { color: inherit; }
+
+/* Keyboard users can jump the nav (5 links + the theme toggle) straight to
+   the page body. Off-screen until focused, then pinned to the top-left. */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateY(-120%);
+  z-index: 200;
+  padding: 12px 18px;
+  background: var(--fg);
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 0 0 4px 0;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* The skip target is focused programmatically, so its own ring is noise. */
+#main:focus {
+  outline: none;
+}
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
@@ -211,9 +245,12 @@ html {
   margin: 0;
 }
 
-/* ---------- reveal on scroll (IntersectionObserver) ---------- */
+/* ---------- reveal on scroll (IntersectionObserver) ----------
+   Hidden-until-revealed only while JS is available (`html.js` is set by the
+   inline head script). Without JS the content stays visible, so crawlers and
+   no-script visitors never see a blank page. */
 
-[data-reveal] {
+html.js [data-reveal] {
   opacity: 0;
   transform: translateY(16px) scale(0.995);
   filter: blur(4px);
@@ -224,7 +261,7 @@ html {
   will-change: opacity, transform, filter;
 }
 
-[data-reveal].is-visible {
+html.js [data-reveal].is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
   filter: blur(0);

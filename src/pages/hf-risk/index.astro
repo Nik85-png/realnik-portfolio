@@ -19,6 +19,36 @@ const results = [
   { value: '0.650', label: '6-month readmission', model: 'XGBoost', width: '65%' },
 ];
 
+// MIMIC-native GCS retrain (Sept 2026). Paired AUROC differences on the same
+// holdout patients; `null: true` marks a confidence interval crossing zero.
+const gcsRows = [
+  { outcome: '28-day', model: 'Expanded baseline', features: '34', auroc: '0.8834', delta: 'Reference' },
+  { outcome: '28-day', model: '+ GCS components', features: '37', auroc: '0.8972', delta: '+0.0138 (0.0090–0.0194)' },
+  { outcome: '28-day', model: '+ ICU-stay flag', features: '35', auroc: '0.8915', delta: '+0.0080 (0.0037–0.0125)' },
+  { outcome: '28-day', model: '+ ICU flag + GCS', features: '38', auroc: '0.9000', delta: '+0.0166 (0.0119–0.0220)' },
+  { outcome: '6-month', model: 'Expanded baseline', features: '34', auroc: '0.8266', delta: 'Reference' },
+  { outcome: '6-month', model: '+ GCS components', features: '37', auroc: '0.8352', delta: '+0.0086 (0.0054–0.0120)' },
+  { outcome: '6-month', model: '+ ICU-stay flag', features: '35', auroc: '0.8280', delta: '+0.0014 (−0.0012–0.0040)', null: true },
+  { outcome: '6-month', model: '+ ICU flag + GCS', features: '38', auroc: '0.8370', delta: '+0.0104 (0.0073–0.0136)' },
+  { outcome: 'ICU only, 6-month', model: 'Baseline', features: '34', auroc: '0.8557', delta: 'Reference' },
+  { outcome: 'ICU only, 6-month', model: '+ GCS components', features: '37', auroc: '0.8766', delta: '+0.0208 (0.0141–0.0274)', provisional: true },
+];
+
+const gcsNotes = [
+  {
+    k: 'Why the split matters',
+    body: '8,006 of the 18,890 patients have more than one heart-failure admission (one has 59). A row-level split would scatter the same person across train and test and inflate every score. Every number above comes from a grouped 80/20 split on subject_id with zero patient overlap asserted before scoring.',
+  },
+  {
+    k: 'GCS is left missing, never imputed',
+    body: 'GCS is charted for 12,083 of 42,990 admissions (28.1%) — the rest were never assessed, so the field is left empty and XGBoost handles the NaN natively. gcs_total is excluded as a feature: for intubated patients it reads 15 regardless of the components. Treating an untested patient as a normal score would fabricate a clinical observation.',
+  },
+  {
+    k: 'The ICU control',
+    body: 'The ICU-stay flag comes from the icustays table, independently of whether GCS was charted. At six months the flag alone is a null result (+0.0014, CI crossing zero) while GCS still adds +0.0104 on top of it — so the gain is not simply “was this patient sick enough for intensive care”.',
+  },
+];
+
 const drivers = [
   { name: 'GCS (Glasgow Coma Scale)', w: '100%' },
   { name: 'Moderate–severe CKD', w: '88%' },
@@ -33,15 +63,17 @@ const drivers = [
 ];
 
 const figures = [
-  { src: 'calibration_curves.png', title: 'Calibration curves', cap: 'Predicted vs observed across deciles — Brier 0.027, ECE 0.023.' },
-  { src: 'dca_curves.png', title: 'Decision curve analysis', cap: 'Net benefit across thresholds vs treat-all / treat-none.' },
-  { src: 'auroc_heatmap.png', title: 'AUROC heatmap', cap: 'All five models × four horizons after the leakage audit.' },
-  { src: 'roc_curves.png', title: 'ROC curves', cap: 'Held-out Zhang cohort, four horizons.' },
-  { src: 'km_by_nyha.png', title: 'Kaplan–Meier by NYHA class', cap: 'Survival separation across NYHA I–IV.' },
-  { src: 'cox_forest_plot.png', title: 'Cox forest plot', cap: 'Hazard ratios with 95% CIs for the final predictor set.' },
-  { src: 'subgroup_ckd.png', title: 'Subgroup: CKD status', cap: 'AUROC split by chronic kidney disease.' },
-  { src: 'subgroup_gender.png', title: 'Subgroup: gender', cap: 'AUROC split by gender.' },
-  { src: 'shap_bar.png', title: 'SHAP bar — mean |SHAP|', cap: 'Global feature importance after the audit.' },
+  // w/h are the real pixel sizes of each PNG, emitted as width/height so the
+  // browser reserves the right box before the image loads (no layout shift).
+  { src: 'calibration_curves.png', title: 'Calibration curves', cap: 'Predicted vs observed across deciles — Brier 0.027, ECE 0.023.', w: 1428, h: 642 },
+  { src: 'dca_curves.png', title: 'Decision curve analysis', cap: 'Net benefit across thresholds vs treat-all / treat-none.', w: 1428, h: 642 },
+  { src: 'auroc_heatmap.png', title: 'AUROC heatmap', cap: 'All five models × four horizons after the leakage audit.', w: 1123, h: 468 },
+  { src: 'roc_curves.png', title: 'ROC curves', cap: 'Held-out Zhang cohort, four horizons.', w: 2388, h: 617 },
+  { src: 'km_by_nyha.png', title: 'Kaplan–Meier by NYHA class', cap: 'Survival separation across NYHA I–IV.', w: 1188, h: 707 },
+  { src: 'cox_forest_plot.png', title: 'Cox forest plot', cap: 'Hazard ratios with 95% CIs for the final predictor set.', w: 1187, h: 827 },
+  { src: 'subgroup_ckd.png', title: 'Subgroup: CKD status', cap: 'AUROC split by chronic kidney disease.', w: 1067, h: 456 },
+  { src: 'subgroup_gender.png', title: 'Subgroup: gender', cap: 'AUROC split by gender.', w: 1067, h: 456 },
+  { src: 'shap_bar.png', title: 'SHAP bar — mean |SHAP|', cap: 'Global feature importance after the audit.', w: 1188, h: 827 },
 ];
 
 const refs = [
@@ -56,15 +88,62 @@ const jumpLinks = [
   ['#tool', 'The live prototype'],
   ['#audit', 'The leakage audit'],
   ['#results', 'Results'],
+  ['#gcs', 'GCS extension'],
   ['#shap', 'SHAP drivers'],
   ['#external', 'MIMIC-IV transport'],
   ['#evaluation', 'Calibration & DCA'],
 ];
+
+// Structured data: marks this page as a scholarly article about heart-failure
+// outcome prediction so search engines can connect the work to the topic.
+const SITE = 'https://realnik.co.uk';
+const schema = {
+  '@type': 'ScholarlyArticle',
+  '@id': `${SITE}/hf-risk/#article`,
+  headline: 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+  name: 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+  description:
+    'Leakage-audited machine-learning pipeline predicting 28-day, 3-month and 6-month mortality and 6-month readmission in 2,008 heart-failure patients: 0.710 AUROC at six months internally and 0.599 on 42,990 MIMIC-IV admissions without retraining. Extended in 2026 with a patient-grouped MIMIC-IV retrain testing whether Glasgow Coma Scale components add discrimination beyond a clinical baseline and beyond an ICU-stay flag.',
+  url: `${SITE}/hf-risk/`,
+  datePublished: '2026-03-20',
+  dateModified: '2026-10-07',
+  inLanguage: 'en-GB',
+  author: { '@id': `${SITE}/#person` },
+  about: [
+    { '@type': 'MedicalCondition', name: 'Heart failure' },
+    { '@type': 'Thing', name: 'Machine learning in healthcare' },
+  ],
+  keywords: [
+    'heart failure prediction',
+    'heart failure machine learning',
+    'Glasgow Coma Scale mortality prediction',
+    'leakage audit',
+    'AUROC',
+    'SHAP explainability',
+    'XGBoost',
+    'MIMIC-IV',
+    'clinical predictive modelling',
+  ],
+  isPartOf: { '@id': `${SITE}/#website` },
+};
 ---
 
 <Layout
-  title="HF-RISK — Predicting Heart Failure Outcomes with Machine Learning"
-  description="MSc dissertation: leakage-audited heart-failure outcome prediction on 2,008 patients. XGBoost 0.710 AUROC at six months; 0.599 transfer to MIMIC-IV."
+  title="HF-RISK — Heart Failure Prediction with ML"
+  description="MSc dissertation and 2026 extension: leakage-audited heart-failure outcome prediction on 2,008 patients, plus a patient-grouped MIMIC-IV retrain showing GCS components add +0.0138 AUROC at 28 days."
+  ogType="article"
+  ogImage="/hf-risk/assets/auroc_heatmap.png"
+  keywords={[
+    'heart failure prediction',
+    'heart failure machine learning project',
+    'heart failure mortality prediction',
+    'MSc dissertation clinical machine learning',
+    'leakage audit',
+    'SHAP explainability',
+    'MIMIC-IV external validation',
+    'medical data analysis project',
+  ]}
+  schema={schema}
 >
   <div class="hf">
     <!-- ===== warn strip ===== -->
@@ -88,6 +167,7 @@ const jumpLinks = [
           <li><a href="#tool">Tool</a></li>
           <li><a href="#audit">Audit</a></li>
           <li><a href="#results">Results</a></li>
+          <li><a href="#gcs">GCS</a></li>
           <li><a href="#shap">SHAP</a></li>
           <li><a href="#external">External</a></li>
           <li><a href="#evaluation">Evaluation</a></li>
@@ -104,21 +184,22 @@ const jumpLinks = [
           <span aria-hidden="true">/</span>
           <span>Heart Failure ML</span>
           <span aria-hidden="true">/</span>
-          <span>Feb &rarr; Mar 2025</span>
+          <span>2026</span>
         </div>
         <h1 data-reveal="1">Predicting heart<br />failure outcomes,<br /><em>honestly.</em></h1>
         <p class="deck" data-reveal="2">
           Five models, four outcome horizons, 2,008 patients — and a full
           leakage audit that cut the headline AUROC from 0.819 to 0.710
-          before I believed a single digit of it.
+          before I believed a single digit of it. Then I retrained inside
+          MIMIC-IV to test whether the neurological signal was real.
         </p>
         <dl class="hero-meta" data-reveal="3">
           <div><dt>Author</dt><dd>Nikunj Prajapati</dd></div>
-          <div><dt>Student ID</dt><dd>24052351</dd></div>
           <div><dt>Institution</dt><dd>London Met.</dd></div>
           <div><dt>Course</dt><dd>MSc Data Analytics</dd></div>
           <div><dt>Cohort</dt><dd>Zhang / PhysioNet</dd></div>
           <div><dt>External set</dt><dd>MIMIC-IV (42,990)</dd></div>
+          <div><dt>Updated</dt><dd>Oct 2026 · GCS extension</dd></div>
         </dl>
       </div>
 
@@ -141,14 +222,14 @@ const jumpLinks = [
       <div class="stat-strip">
         <div class="stat" data-reveal><p class="k" data-count="2008">0</p><p class="lbl">Zhang patients</p><p class="sub">Heart-failure clinical records</p></div>
         <div class="stat" data-reveal="1"><p class="k" data-count="143">0</p><p class="lbl">Final predictors</p><p class="sub">After the leakage audit</p></div>
-        <div class="stat" data-reveal="2"><p class="k" data-count="42990">0</p><p class="lbl">MIMIC-IV patients</p><p class="sub">External transportability set</p></div>
-        <div class="stat" data-reveal="3"><p class="k" data-count="10">0</p><p class="lbl">Analysis scripts</p><p class="sub">Reproducible pipeline</p></div>
+        <div class="stat" data-reveal="2"><p class="k" data-count="42990">0</p><p class="lbl">MIMIC-IV admissions</p><p class="sub">External transport set</p></div>
+        <div class="stat" data-reveal="3"><p class="k" data-count="0.0138" data-decimals="4" data-prefix="+">0</p><p class="lbl">AUROC from GCS</p><p class="sub">MIMIC-IV, 28-day, grouped split</p></div>
       </div>
     </div>
 
     <!-- ===== tool ===== -->
     <section class="section wrap" id="tool" aria-labelledby="tool-h">
-      <SectionHeadInline num="The live prototype" title="Now runs the <em>real models.</em>" lede="The deployed Streamlit app serves the audited pipeline — same 143 predictors, same thresholds, with a research-only framing." />
+      <SectionHeadInline id="tool-h" num="The live prototype" title="Now runs the <em>real models.</em>" lede="The deployed Streamlit app serves the audited pipeline — same 143 predictors, same thresholds, with a research-only framing." />
 
       <div class="tool-wrap">
         <div class="tool-panel" data-reveal>
@@ -199,7 +280,7 @@ python app.py</code></pre>
 
     <!-- ===== audit ===== -->
     <section class="section wrap" id="audit" aria-labelledby="audit-h">
-      <SectionHeadInline num="The audit" title="Higher AUROC isn't better <em>if it's not honest.</em>" lede="An earlier pass reached 0.819 at six months. The audit found features that leak the future — and the honest number is 0.710 internal, 0.599 external." />
+      <SectionHeadInline id="audit-h" num="The audit" title="Higher AUROC isn't better <em>if it's not honest.</em>" lede="An earlier pass reached 0.819 at six months. The audit found features that leak the future — and the honest number is 0.710 internal, 0.599 external." />
 
       <div class="audit-head" data-reveal>
         <div class="audit-big">
@@ -246,7 +327,7 @@ python app.py</code></pre>
 
     <!-- ===== results ===== -->
     <section class="section wrap" id="results" aria-labelledby="results-h">
-      <SectionHeadInline num="Results" title="The numbers that <em>survive scrutiny.</em>" lede="Held-out Zhang cohort, four horizons, two model families." />
+      <SectionHeadInline id="results-h" num="Results" title="The numbers that <em>survive scrutiny.</em>" lede="Held-out Zhang cohort, four horizons, two model families." />
 
       <div class="results-grid">
         {results.map((r, i) => (
@@ -262,9 +343,124 @@ python app.py</code></pre>
       </div>
     </section>
 
+    <!-- ===== gcs extension ===== -->
+    <section class="section wrap" id="gcs" aria-labelledby="gcs-h">
+      <SectionHeadInline
+        id="gcs-h"
+        num="2026 extension · GCS"
+        title="Does GCS add anything <em>beyond an ICU stay?</em>"
+        lede="GCS topped the Zhang SHAP ranking, so I retrained inside MIMIC-IV — 42,990 admissions from 18,890 patients, grouped by patient — and tested the components against a real ICU-stay control."
+      />
+
+      <div class="gcs-hero">
+        <div class="gcs-big" data-reveal>
+          <p class="gcs-k">28-day mortality</p>
+          <p class="gcs-num">0.8834 <span aria-hidden="true">&rarr;</span> 0.8972</p>
+          <p class="gcs-sub">+0.0138 AUROC · 95% CI 0.0090–0.0194</p>
+        </div>
+        <div class="gcs-big" data-reveal="1">
+          <p class="gcs-k">6-month mortality</p>
+          <p class="gcs-num">0.8266 <span aria-hidden="true">&rarr;</span> 0.8352</p>
+          <p class="gcs-sub">+0.0086 AUROC · 95% CI 0.0054–0.0120</p>
+        </div>
+        <div class="gcs-big" data-reveal="2">
+          <p class="gcs-k">ICU subgroup, 6-month <em>descriptive</em></p>
+          <p class="gcs-num">0.8557 <span aria-hidden="true">&rarr;</span> 0.8766</p>
+          <p class="gcs-sub">+0.0208 AUROC · 95% CI 0.0141–0.0274</p>
+        </div>
+      </div>
+
+      <div class="gcs-table-wrap" data-reveal="1">
+        <table class="gcs-table">
+          <caption>
+            Paired AUROC differences measured on the same 8,749-admission
+            holdout. Baseline = 34 clinical features; GCS adds eye opening,
+            verbal response and movement.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Outcome</th>
+              <th scope="col">Model</th>
+              <th scope="col">Features</th>
+              <th scope="col">Test AUROC</th>
+              <th scope="col">&Delta; vs baseline (95% CI)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {gcsRows.map((r) => (
+              <tr class={r.null ? 'is-null' : r.provisional ? 'is-provisional' : undefined}>
+                <th scope="row">{r.outcome}</th>
+                <td>{r.model}</td>
+                <td class="num">{r.features}</td>
+                <td class="num">{r.auroc}</td>
+                <td class="num">{r.delta}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p class="gcs-legend">
+          Shaded rows: a confidence interval crossing zero (no detectable
+          improvement at this sample size), and the ICU-subgroup result, which
+          uses a single split rather than five-fold cross-validation.
+        </p>
+      </div>
+
+      <div class="gcs-notes">
+        {gcsNotes.map((n, i) => (
+          <div class="panel" data-reveal={String(Math.min(i, 3)) || undefined}>
+            <p class="block-k">{n.k}</p>
+            <p class="panel-p">{n.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <aside class="gcs-caveat" data-reveal="1">
+        <p class="block-k">What this does not establish</p>
+        <ul class="caveat-list">
+          <li>
+            One cohort, one extraction: admissions with an ICD-10 I50*
+            diagnosis code only. ICD-9 428* admissions are outside this cohort.
+          </li>
+          <li>
+            The ICU subgroup is selected on severity — ICU admission is itself
+            caused by how sick the patient was — so its AUROC and its +0.0208
+            increment are descriptive and must not be compared with the
+            full-cohort numbers.
+          </li>
+          <li>
+            The outcome windows start on the discharge date, so patients who
+            died in hospital are counted as post-discharge deaths: 2,323 of the
+            4,416 28-day positives (53%). It is a known label-definition problem,
+            recorded in the repository and being corrected in the next revision —
+            the increments above are within-analysis comparisons, not
+            absolute performance claims.
+          </li>
+          <li>
+            No external validation of these MIMIC-native models has been done,
+            and nothing here is a clinical claim.
+          </li>
+        </ul>
+      </aside>
+
+      <div class="gcs-figs">
+        <figure class="fig zoom" data-reveal data-src="shap_bar_icu_only.png" data-title="SHAP bar — ICU-only cohort" data-cap="Verbal response ranks first of 37 features in the ICU-only six-month model; movement sixth and eye opening seventh.">
+          <img src="/hf-risk/assets/shap_bar_icu_only.png" alt="SHAP bar chart of mean absolute SHAP values for the ICU-only MIMIC-IV six-month model" width="1287" height="765" loading="lazy" />
+          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+        </figure>
+        <figure class="fig zoom" data-reveal="1" data-src="shap_beeswarm_icu_only.png" data-title="SHAP beeswarm — ICU-only cohort" data-cap="One dot per admission; colour is the feature value. Verbal response sits at the top of this model.">
+          <img src="/hf-risk/assets/shap_beeswarm_icu_only.png" alt="SHAP beeswarm plot for the ICU-only MIMIC-IV six-month model" width="994" height="960" loading="lazy" />
+          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+        </figure>
+        <figure class="fig zoom" data-reveal="2" data-src="shap_cross_cohort_ranks.png" data-title="Cross-cohort feature ranks" data-cap="Zhang top-20 vs MIMIC-IV ranks. Only seven features overlap and the Zhang table is truncated, so the comparison stays qualitative.">
+          <img src="/hf-risk/assets/shap_cross_cohort_ranks.png" alt="Scatter of feature rank positions in the Zhang and MIMIC-IV SHAP rankings" width="1672" height="766" loading="lazy" />
+          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+        </figure>
+      </div>
+    </section>
+
     <!-- ===== process ===== -->
     <section class="section wrap" id="process" aria-labelledby="process-h">
-      <SectionHeadInline num="Process" title="Five weeks, <em>four tracks.</em>" lede="Develop, audit, explain, validate — in parallel, not in series." />
+      <SectionHeadInline id="process-h" num="Process" title="Five weeks, <em>four tracks.</em>" lede="Develop, audit, explain, validate — in parallel, not in series." />
 
       <ol class="process-steps">
         <li data-reveal><span class="step-k">Step 01</span><h3>Develop</h3><p>Five candidate models, consistent splits, no peeking.</p></li>
@@ -285,7 +481,7 @@ python app.py</code></pre>
 
     <!-- ===== shap ===== -->
     <section class="section wrap" id="shap" aria-labelledby="shap-h">
-      <SectionHeadInline num="Explainability" title="What the final model <em>actually pays attention to.</em>" lede="Mean |SHAP| across the held-out cohort — the cardiorenal axis, in descending order." />
+      <SectionHeadInline id="shap-h" num="Explainability" title="What the final model <em>actually pays attention to.</em>" lede="Mean |SHAP| across the held-out cohort — the cardiorenal axis, in descending order." />
 
       <div class="driver-list" data-reveal>
         {drivers.map((d) => (
@@ -310,26 +506,29 @@ python app.py</code></pre>
         <div class="panel" data-reveal="2">
           <p class="block-k">A note on GCS</p>
           <p class="panel-p">
-            GCS tops the chart partly because it is 15 for 97.2% of
-            patients — its signal is mostly "is it ever low?". The model
-            uses it; the explainer should say so plainly.
+            In the Zhang cohort GCS tops the chart partly because it is 15 for
+            97.2% of patients — its signal is mostly “is it ever low?”. The
+            MIMIC-IV extension answers that properly: leave the score missing
+            instead of imputing a normal one, add an independent ICU-stay flag
+            as a control, and the components still earn a small, consistent
+            increment.
           </p>
         </div>
       </div>
 
       <figure class="fig shap-fig" data-reveal data-title="SHAP beeswarm" data-cap="One dot per patient; colour is feature value. Position shows direction and magnitude of each feature's contribution.">
-        <img src="/hf-risk/assets/shap_beeswarm.png" alt="SHAP beeswarm plot for the final 6-month model" loading="lazy" />
+        <img src="/hf-risk/assets/shap_beeswarm.png" alt="SHAP beeswarm plot for the final 6-month model" width="1282" height="948" loading="lazy" />
         <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
       </figure>
     </section>
 
     <!-- ===== external ===== -->
     <section class="section wrap" id="external" aria-labelledby="external-h">
-      <SectionHeadInline num="External validation" title="Transportability to <em>MIMIC-IV.</em>" lede="The model was trained on Zhang cohort records and applied to 42,990 MIMIC-IV admissions with no retraining — a transportability check, not a clinical claim." />
+      <SectionHeadInline id="external-h" num="External validation" title="Transportability to <em>MIMIC-IV.</em>" lede="The model was trained on Zhang cohort records and applied to 42,990 MIMIC-IV admissions with no retraining — a transportability check, not a clinical claim." />
 
       <div class="external-split">
         <figure class="fig" data-reveal data-title="External validation ROC" data-cap="Direct transfer to MIMIC-IV: 28-day 0.524, 6-month 0.599 — above chance, far below internal.">
-          <img src="/hf-risk/assets/external_validation_roc.png" alt="ROC curves for direct transfer to MIMIC-IV" loading="lazy" />
+          <img src="/hf-risk/assets/external_validation_roc.png" alt="ROC curves for direct transfer to MIMIC-IV" width="1428" height="617" loading="lazy" />
           <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
         </figure>
 
@@ -345,14 +544,16 @@ python app.py</code></pre>
             <span class="ext-val transfer">0.599 <em>conservative, positive</em></span>
           </div>
           <div class="ext-row">
-            <span class="ext-lbl">Transport gap</span>
-            <div class="gap-bar"><span style="width:54%"></span></div>
-            <span class="ext-pct">54%</span>
+            <span class="ext-lbl">28-day gap</span>
+            <div class="gap-bar"><span style="width:33%"></span></div>
+            <span class="ext-pct">&minus;0.257</span>
           </div>
           <p class="ext-note">
-            A 54% drop under true domain shift is close to chance for the
-            28-day horizon — reported as a transportability check, not a
-            clinical claim. Retraining on local data is the honest next step.
+            Under true domain shift the 28-day AUROC falls from 0.781 to 0.524
+            — a 0.257 drop that leaves it barely above chance. Reported as a
+            transportability check, not a clinical claim. Retraining on local
+            data is the honest next step, which is exactly what the 2026 GCS
+            extension does.
           </p>
         </div>
       </div>
@@ -360,12 +561,12 @@ python app.py</code></pre>
 
     <!-- ===== evaluation ===== -->
     <section class="section wrap" id="evaluation" aria-labelledby="eval-h">
-      <SectionHeadInline num="Evaluation" title="Calibration, DCA, and <em>subgroup checks.</em>" lede="A model is only as good as its worst-calibrated decile. Brier 0.027, ECE 0.023." />
+      <SectionHeadInline id="eval-h" num="Evaluation" title="Calibration, DCA, and <em>subgroup checks.</em>" lede="A model is only as good as its worst-calibrated decile. Brier 0.027, ECE 0.023." />
 
       <div class="figures">
         {figures.map((f, i) => (
           <figure class="fig zoom" data-reveal data-src={f.src} data-title={f.title} data-cap={f.cap}>
-            <img src={`/hf-risk/assets/${f.src}`} alt={f.title} loading="lazy" />
+            <img src={`/hf-risk/assets/${f.src}`} alt={f.title} width={f.w} height={f.h} loading="lazy" />
             <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
           </figure>
         ))}
@@ -374,7 +575,7 @@ python app.py</code></pre>
 
     <!-- ===== glossary ===== -->
     <section class="section wrap-narrow" aria-labelledby="glossary-h">
-      <SectionHeadInline num="Glossary" title="Terms, <em>plainly.</em>" />
+      <SectionHeadInline id="glossary-h" num="Glossary" title="Terms, <em>plainly.</em>" />
 
       <div class="glossary">
         <div class="gloss" data-reveal>
@@ -419,7 +620,7 @@ python app.py</code></pre>
 
     <!-- ===== references ===== -->
     <section class="section wrap-narrow" aria-labelledby="refs-h">
-      <SectionHeadInline num="References" title="Five sources, <em>no padding.</em>" />
+      <SectionHeadInline id="refs-h" num="References" title="Five sources, <em>no padding.</em>" />
       <ol class="refs">
         {refs.map((r) => <li>{r}</li>)}
       </ol>
@@ -623,6 +824,7 @@ python app.py</code></pre>
 
   .hf-links {
     display: flex;
+    flex-wrap: wrap;
     gap: clamp(12px, 2vw, 24px);
     list-style: none;
     margin: 0;
@@ -1145,6 +1347,174 @@ python app.py</code></pre>
 
   @media (max-width: 520px) {
     .results-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ---- gcs extension ---- */
+  .gcs-hero {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(18px, 2.6vw, 36px);
+    margin-bottom: clamp(30px, 4vw, 48px);
+  }
+
+  .gcs-big {
+    border-top: 2px solid var(--theme-primary);
+    padding-top: 18px;
+  }
+
+  .gcs-k {
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin: 0 0 12px;
+  }
+
+  .gcs-k em {
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .gcs-num {
+    font-family: var(--font-display);
+    font-size: clamp(20px, 2.4vw, 30px);
+    line-height: 1.15;
+    margin: 0 0 10px;
+  }
+
+  .gcs-num span { color: var(--fg-muted); }
+
+  .gcs-sub {
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
+  .gcs-table-wrap {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+
+  .gcs-table {
+    width: 100%;
+    min-width: 620px;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .gcs-table caption {
+    caption-side: top;
+    text-align: left;
+    padding: 16px 18px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .gcs-table th,
+  .gcs-table td {
+    padding: 11px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--rule-soft);
+    font-weight: 400;
+  }
+
+  .gcs-table thead th {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    background: color-mix(in oklch, var(--fg) 4%, var(--card));
+    white-space: nowrap;
+  }
+
+  .gcs-table tbody th {
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    white-space: nowrap;
+  }
+
+  .gcs-table .num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .gcs-table tr:last-child th,
+  .gcs-table tr:last-child td { border-bottom: 0; }
+
+  .gcs-table .is-null,
+  .gcs-table .is-provisional {
+    background: color-mix(in oklch, var(--fg) 3%, transparent);
+  }
+
+  .gcs-table .is-null td.num:last-child,
+  .gcs-table .is-provisional td.num:last-child { color: var(--fg-muted); }
+
+  .gcs-legend {
+    margin: 0;
+    padding: 12px 18px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  .gcs-notes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(16px, 2.4vw, 32px);
+    margin-top: clamp(28px, 3.4vw, 44px);
+  }
+
+  .gcs-notes .panel { margin: 0; }
+
+  .gcs-caveat {
+    margin-top: clamp(28px, 3.4vw, 44px);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--theme-complementary);
+    border-radius: 8px;
+    padding: clamp(20px, 2.4vw, 30px);
+    background: var(--card);
+  }
+
+  .caveat-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .caveat-list li {
+    font-size: 13.5px;
+    color: var(--fg-muted);
+    padding-left: 18px;
+    position: relative;
+  }
+
+  .caveat-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 6px;
+    height: 1px;
+    background: var(--fg-muted);
+  }
+
+  .gcs-figs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(14px, 2vw, 24px);
+    margin-top: clamp(28px, 3.4vw, 44px);
+  }
+
+  @media (max-width: 960px) {
+    .gcs-hero { grid-template-columns: 1fr; }
+    .gcs-notes { grid-template-columns: 1fr; }
+    .gcs-figs { grid-template-columns: 1fr; }
   }
 
   /* ---- process ---- */

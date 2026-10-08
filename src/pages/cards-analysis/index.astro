@@ -2,11 +2,47 @@
 import Layout from '../../components/Layout.astro';
 
 const email = 'prajapatinick85@gmail.com';
+
+// Structured data: ties this page to card-sorting / cognitive-strategy queries.
+const SITE = 'https://realnik.co.uk';
+const schema = {
+  '@type': 'CreativeWork',
+  '@id': `${SITE}/cards-analysis/#work`,
+  name: 'Interactive Card Sorting — Spatial Organization & Cognitive Strategy',
+  description:
+    'A behavioural psychology data project analysing 845 recorded card-sorting trials on an 8×8 board. Spatial organisation predicted completion better than time on task, and blank cards acted as scaffolding; the interactive viewer exposes nine analysis modes.',
+  url: `${SITE}/cards-analysis/`,
+  inLanguage: 'en-GB',
+  creator: { '@id': `${SITE}/#person` },
+  about: [
+    { '@type': 'Thing', name: 'Card sorting' },
+    { '@type': 'Thing', name: 'Cognitive strategy' },
+    { '@type': 'Thing', name: 'Behavioural data analysis' },
+  ],
+  keywords: [
+    'card sorting psychology',
+    'card sorting experiment',
+    'spatial organisation',
+    'cognitive strategy',
+    'blank card scaffolding',
+    'behavioural data analysis',
+  ],
+  isPartOf: { '@id': `${SITE}/#website` },
+};
 ---
 
 <Layout
-  title="Interactive Card Sorting Analysis"
+  title="Card Sorting & Cognitive Strategy Analysis"
   description="845 recorded trials of spatial card sorting on an 8×8 board. Interactive analysis viewer with nine views, retry tracing, and statistics."
+  keywords={[
+    'card sorting psychology project',
+    'card sorting experiment analysis',
+    'spatial organisation cognitive strategy',
+    'blank card paradox',
+    'behavioural data analysis project',
+    'interactive data viewer',
+  ]}
+  schema={schema}
 >
   <!-- ===== hero ===== -->
   <header class="cards-hero wrap">
@@ -86,10 +122,17 @@ const email = 'prajapatinick85@gmail.com';
   <!-- ===== contact strip ===== -->
   <section class="contact-strip" aria-labelledby="cards-contact-h">
     <div class="wrap contact-inner">
-      <h2 id="cards-contact-h" data-reveal>Want the <em>data</em> behind this?</h2>
-      <div data-reveal="1">
+      <h2 id="cards-contact-h" data-reveal>The data stays <em>private.</em></h2>
+      <p class="contact-note" data-reveal="1">
+        Participant trials are covered by the study's ethics and data-handling
+        terms, so the raw dataset isn't shared. What is public: the interactive
+        viewer above, the documented method, and every statistic quoted on this
+        page — I'm happy to talk through how any of them was derived, and how
+        the study could be replicated.
+      </p>
+      <div data-reveal="2">
         <a class="btn btn-solid" href={`mailto:${email}`}>
-          Ask for the dataset <span class="arrow" aria-hidden="true">&rarr;</span>
+          Ask about the method <span class="arrow" aria-hidden="true">&rarr;</span>
         </a>
       </div>
     </div>
@@ -329,6 +372,13 @@ const email = 'prajapatinick85@gmail.com';
   .contact-inner h2 em {
     font-style: italic;
     font-weight: 400;
+    color: var(--fg-muted);
+  }
+
+  .contact-note {
+    max-width: 62ch;
+    margin: 0 auto 28px;
+    font-size: 14px;
     color: var(--fg-muted);
   }
 

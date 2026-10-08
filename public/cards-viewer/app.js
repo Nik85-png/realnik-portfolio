@@ -66,7 +66,10 @@ function initTabs() {
 
 async function loadData() {
     try {
-        const res = await fetch('/data/card_analysis_data.json', { cache: 'no-store' });
+        // Default caching: the dataset only changes when the site is rebuilt,
+        // and the server revalidates it against an ETag. `no-store` used to
+        // force a full re-download of several megabytes on every visit.
+        const res = await fetch('/data/card_analysis_data.json');
         state.data = await res.json();
     } catch (error) {
         state.data = { analysis_types: [], statistics: {} };

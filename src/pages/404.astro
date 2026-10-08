@@ -1,0 +1,73 @@
+---
+import Layout from '../components/Layout.astro';
+
+const links = [
+  { href: '/', label: 'Home' },
+  { href: '/projects/', label: 'Projects' },
+  { href: '/hf-risk/', label: 'HF-RISK case study' },
+  { href: '/cards-analysis/', label: 'Card Lab' },
+];
+---
+
+<Layout
+  title="Page not found"
+  description="That URL doesn't exist. Four pages that do: home, projects, the HF-RISK case study and the Card Lab."
+  noindex
+>
+  <header class="page-hero wrap nf">
+    <p class="eyebrow" data-reveal>404</p>
+    <h1 data-reveal="1">This page isn't <em>here.</em></h1>
+    <p class="deck" data-reveal="2">
+      No record of it — which, for a site that audits its own numbers, is the
+      honest answer. Nothing was lost: pick a direction.
+    </p>
+
+    <nav class="nf-links" aria-label="Site sections" data-reveal="3">
+      <ul>
+        {links.map((link) => (
+          <li>
+            <a class="btn btn-ghost" href={link.href}>
+              {link.label} <span aria-hidden="true">&rarr;</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <p class="nf-note" data-reveal="4">
+      If you followed a link from somewhere and expected to land on a specific
+      figure or chart, a note to{' '}
+      <a href="mailto:prajapatinick85@gmail.com">prajapatinick85@gmail.com</a>{' '}
+      will get it fixed.
+    </p>
+  </header>
+</Layout>
+
+<style>
+  .nf {
+    padding-top: clamp(72px, 12vh, 150px);
+    padding-bottom: clamp(72px, 12vh, 150px);
+  }
+
+  .nf-links ul {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: clamp(32px, 4vw, 46px) 0 0;
+    padding: 0;
+  }
+
+  .nf-note {
+    margin: clamp(32px, 4vw, 46px) 0 0;
+    max-width: 54ch;
+    font-size: 13.5px;
+    color: var(--fg-muted);
+  }
+
+  .nf-note a {
+    color: var(--fg);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+</style>

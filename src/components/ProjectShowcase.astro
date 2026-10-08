@@ -1,0 +1,338 @@
+---
+import Tag from './Tag.astro';
+
+interface Fact {
+  k: string;
+  v: string;
+}
+
+interface Props {
+  index: string;
+  eyebrow: string;
+  title: string;
+  lede: string;
+  facts: Fact[];
+  tags: string[];
+  href: string;
+  cta: string;
+  /** Primary figure (real screenshot or chart). */
+  image?: string;
+  imageAlt?: string;
+  /** Small supporting figures shown under the primary one. */
+  thumbs?: { src: string; alt: string }[];
+  /** Inline generated visual, used when no screenshot exists. */
+  visual?: 'board';
+  reversed?: boolean;
+}
+
+const {
+  index,
+  eyebrow,
+  title,
+  lede,
+  facts,
+  tags,
+  href,
+  cta,
+  image,
+  imageAlt,
+  thumbs = [],
+  visual,
+  reversed = false,
+} = Astro.props;
+
+// --- Inline 8x8 board visual (card-sorting project) -------------------------
+// Deterministic permutations so the build output is stable.
+const ranks = ['A', '2', '3', '4', '5', '6', '7', '8'];
+const CELL = 26;
+const GAP = 4;
+const BOARD = ranks.length * CELL + (ranks.length - 1) * GAP; // 236
+
+function shuffle<T>(input: T[], seed: number): T[] {
+  const arr = [...input];
+  let s = seed * 7919 + 13;
+  for (let i = arr.length - 1; i > 0; i--) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const j = s % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+const messy = [2, 5, 9, 4, 7, 1, 8, 3].map((seed) => shuffle(ranks, seed));
+const tidy = Array.from({ length: 8 }, () => ranks);
+// Blank cards act as scaffolding — marked in both boards.
+const blanks: Record<string, [number, number][]> = {
+  messy: [
+    [1, 3],
+    [6, 5],
+  ],
+  tidy: [
+    [3, 1],
+    [6, 6],
+  ],
+};
+const isBlank = (kind: 'messy' | 'tidy', r: number, c: number) =>
+  blanks[kind].some(([br, bc]) => br === r && bc === c);
+---
+
+<article class:list={['showcase', reversed && 'is-reversed']} data-reveal>
+  <div class="showcase-media">
+    {visual === 'board' ? (
+      <div class="board-wrap">
+        <div class="board">
+          <svg
+            viewBox={`0 0 ${BOARD} ${BOARD}`}
+            role="img"
+            aria-label="Two eight by eight card boards: the left one scattered at random, the right one sorted into runs with two blank cards used as scaffolding"
+          >
+            {messy.map((row, r) =>
+              row.map((rank, c) => (
+                <g transform={`translate(${c * (CELL + GAP)} ${r * (CELL + GAP)})`}>
+                  <rect
+                    class:list={['cell', isBlank('messy', r, c) && 'cell-blank']}
+                    width={CELL}
+                    height={CELL}
+                    rx="4"
+                  />
+                  {!isBlank('messy', r, c) && (
+                    <text class="cell-txt" x={CELL / 2} y={CELL / 2 + 4}>
+                      {rank}
+                    </text>
+                  )}
+                </g>
+              ))
+            )}
+          </svg>
+          <p class="board-cap">As given — scattered</p>
+        </div>
+        <div class="board">
+          <svg
+            viewBox={`0 0 ${BOARD} ${BOARD}`}
+            role="img"
+            aria-label="The same board arranged into ordered runs of A to 8, with blank cards marking boundaries"
+          >
+            {tidy.map((row, r) =>
+              row.map((rank, c) => (
+                <g transform={`translate(${c * (CELL + GAP)} ${r * (CELL + GAP)})`}>
+                  <rect
+                    class:list={['cell', 'cell-tidy', isBlank('tidy', r, c) && 'cell-blank']}
+                    width={CELL}
+                    height={CELL}
+                    rx="4"
+                  />
+                  {!isBlank('tidy', r, c) && (
+                    <text class="cell-txt" x={CELL / 2} y={CELL / 2 + 4}>
+                      {rank}
+                    </text>
+                  )}
+                </g>
+              ))
+            )}
+          </svg>
+          <p class="board-cap">Organised — runs + blank scaffolding</p>
+        </div>
+      </div>
+    ) : (
+      <>
+        <figure class="shot">
+          <img src={image} alt={imageAlt ?? title} loading="lazy" width="1200" height="760" />
+        </figure>
+        {thumbs.length > 0 && (
+          <ul class="thumbs">
+            {thumbs.map((t) => (
+              <li>
+                <img src={t.src} alt={t.alt} loading="lazy" />
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    )}
+  </div>
+
+  <div class="showcase-body">
+    <p class="sc-eyebrow">
+      <span class="sc-idx" aria-hidden="true">{index}</span>
+      {eyebrow}
+    </p>
+    <h3>{title}</h3>
+    <p class="sc-lede">{lede}</p>
+
+    <dl class="sc-facts">
+      {facts.map((f) => (
+        <div>
+          <dt>{f.k}</dt>
+          <dd>{f.v}</dd>
+        </div>
+      ))}
+    </dl>
+
+    <Tag tags={tags} />
+
+    <a class="btn btn-ghost sc-cta" href={href}>
+      {cta} <span class="arrow" aria-hidden="true">&rarr;</span>
+    </a>
+  </div>
+</article>
+
+<style>
+  .showcase {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: clamp(24px, 3.4vw, 56px);
+    align-items: center;
+    padding-block: clamp(32px, 4vw, 56px);
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  .showcase.is-reversed .showcase-media { order: 2; }
+
+  .showcase-media {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    padding: clamp(14px, 1.8vw, 22px);
+    overflow: hidden;
+  }
+
+  .shot img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+  }
+
+  .thumbs {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 12px 0 0;
+    padding: 0;
+  }
+
+  .thumbs img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--rule-soft);
+  }
+
+  .board-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(10px, 1.6vw, 20px);
+  }
+
+  .board svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .board-cap {
+    margin: 10px 0 0;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  .cell {
+    fill: var(--rule-soft);
+    stroke: var(--rule);
+    stroke-width: 1;
+  }
+
+  .cell-tidy {
+    fill: color-mix(in oklch, var(--theme-primary) 26%, transparent);
+    stroke: color-mix(in oklch, var(--theme-primary) 55%, transparent);
+  }
+
+  .cell-blank {
+    fill: none;
+    stroke: var(--theme-complementary);
+    stroke-dasharray: 3 3;
+  }
+
+  .cell-txt {
+    font-family: var(--font-display);
+    font-size: 11px;
+    fill: var(--fg);
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+
+  .sc-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 10.5px;
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin: 0 0 14px;
+  }
+
+  .sc-idx {
+    font-family: var(--font-display);
+    color: var(--theme-primary);
+  }
+
+  .showcase-body h3 {
+    font-size: clamp(22px, 2.5vw, 32px);
+    margin: 0 0 14px;
+  }
+
+  .sc-lede {
+    font-size: 14.5px;
+    color: var(--fg-muted);
+    margin: 0 0 22px;
+    max-width: 56ch;
+  }
+
+  .sc-facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 24px;
+    margin: 0 0 20px;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  .sc-facts div { margin: 0; }
+
+  .sc-facts dt {
+    font-size: 10px;
+    letter-spacing: 0.17em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin-bottom: 3px;
+  }
+
+  .sc-facts dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sc-cta {
+    margin-top: 22px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 900px) {
+    .showcase { grid-template-columns: 1fr; }
+    .showcase.is-reversed .showcase-media { order: 0; }
+  }
+
+  @media (max-width: 460px) {
+    .board-wrap { grid-template-columns: 1fr; }
+    .sc-facts { grid-template-columns: 1fr; }
+  }
+</style>
