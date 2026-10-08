@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "test": "node scripts/smoke-test.mjs",
+    "check:live": "node scripts/check-live.mjs",
     "self-host-fonts": "node scripts/self-host-fonts.mjs",
     "build": "astro build && node scripts/minify-data.mjs",
     "heroku-postbuild": "npm run build",
