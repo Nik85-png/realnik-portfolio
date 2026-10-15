@@ -110,7 +110,8 @@ check('sitemap-index.xml is served as XML', smIndex.status === 200 && (smIndex.h
 const childName = (smIndex.body.match(/sitemap-\d+\.xml/) || [])[0];
 const child = await probe('/' + childName);
 const locs = (child.body.match(/<loc>([^<]+)<\/loc>/g) || []).map((l) => l.replace(/<\/?loc>/g, ''));
-check('sitemap lists the five real pages', locs.length === 5, `${locs.length} urls`);
+const expectedLocs = ['/', '/info/', '/projects/', '/hf-risk/', '/hf-risk/tool/', '/cards-analysis/'].map((p) => `https://realnik.co.uk${p}`);
+check('sitemap lists the six real pages', expectedLocs.every((u) => locs.includes(u)) && locs.length === expectedLocs.length, `${locs.length} urls`);
 check('sitemap omits the 404 page', !locs.some((l) => l.includes('404')));
 check('sitemap dates come from the build', (child.body.match(/<lastmod>/g) || []).length === locs.length);
 check('robots.txt points at the generated sitemap', /sitemap-index\.xml/.test((await probe('/robots.txt')).body));
