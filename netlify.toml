@@ -1,6 +1,42 @@
 [build]
-  publish = ".next"
   command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+# The site is fully static; the contact endpoint is the one server piece.
+[[redirects]]
+  from = "/api/contact"
+  to = "/.netlify/functions/contact"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # SAMEORIGIN, not DENY: the Card Lab page frames /cards-viewer/ from this
+    # same origin, and DENY would blank it out.
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Astro emits content-hashed filenames here, so they can never go stale.
+[[headers]]
+  for = "/_astro/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Charts, the Card Lab dataset and the CV only change when we redeploy.
+[[headers]]
+  for = "/hf-risk/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"

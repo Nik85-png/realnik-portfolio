@@ -1,3 +1,0 @@
-outcome,brier_score,ece,n_test,n_positive,positive_rate
-6m_death,0.0268,0.0227,402,11,0.0274
-28d_death,0.0164,0.0353,402,6,0.0149

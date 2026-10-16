@@ -1,5 +1,0 @@
-outcome,subgroup,n,n_positive,auroc,ci_low,ci_high
-6m_death,Female,240,6,0.6838,0.465,0.8992
-6m_death,Male,162,5,0.7503,0.3834,0.9957
-28d_death,Female,240,3,0.8277,0.6756,0.9432
-28d_death,Male,162,3,0.739,0.1993,1.0

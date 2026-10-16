@@ -1,5 +1,0 @@
-outcome,subgroup,n,n_positive,positive_rate,auroc,ci_low,ci_high
-6m_death,No CKD,315,9,0.0286,0.7531,0.6002,0.9168
-6m_death,CKD,87,2,0.023,0.5706,0.093,1.0
-28d_death,No CKD,315,4,0.0127,0.7789,0.3357,1.0
-28d_death,CKD,87,2,0.023,0.7441,0.4148,1.0

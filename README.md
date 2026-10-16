@@ -1,53 +1,66 @@
-# Netlify Developer Portfolio Starter (auto-annotated)
+# realnik.co.uk — Nikunj Prajapati's portfolio
 
-![Developer Portfolio](https://assets.stackbit.com/docs/personal-nextjs-starter-thumb.png)
+Personal portfolio of Nikunj Prajapati (MSc Data Analytics, London Met):
+heart-failure machine-learning research (HF-RISK) and an interactive
+behavioural card-sorting study (Card Lab). Built with
+[Astro 5](https://astro.build), no framework runtime on the client —
+static pages plus small progressive-enhancement scripts.
 
-This is a full-fledged portfolio website built with Next.js, Tailwind CSS, [visual editor](https://docs.netlify.com/visual-editor/overview/) and the [Git Content Source](https://docs.netlify.com/create/content-sources/git/).
+Live site: <https://realnik.co.uk> (served from Heroku; see Deploy below).
 
-The codebase showcases **how to apply annotations at scale**, meaning: how to make much of your components [highlightable in the visual editor](https://docs.netlify.com/visual-editor/visual-editing/inline-editor/) through data attributes without manually adding code throughout the codebase.
+## Pages
 
-**This is achieved by:**
+| Route | What it is |
+|---|---|
+| `/` | Homepage: hero, stat strip, achievements, featured work, FAQ, contact form |
+| `/projects/` | Project index |
+| `/info/` | About · CV, timeline, skills, contact form |
+| `/cards-analysis/` | Card Lab case study + live 8×8 card-sorting explorer (845 trials, 714 usable) |
+| `/hf-risk/` | HF-RISK case study: leakage-audited heart-failure outcome prediction (2,008 Zhang/PhysioNet patients, 0.710 AUROC at 6 months) plus the Oct 2026 patient-grouped MIMIC-IV retrain testing Glasgow Coma Scale components |
+| `/hf-risk/tool/` | Embedded research prototype: the retrained 34-vs-37-feature model pair evaluated entirely in the browser, with holdout calibration and per-component GCS attribution |
 
-1. Adding an annotation property to the content objects at they're loaded (see `src/utils/content.ts`)
-1. When rendering the page, each content sub-object is dynamically matched to the appropriate component. At this point, wrap each component with an annotation, based on the abovementioned content property. See `src/components/components-registry.tsx`.
+Research prototype, not a clinical device — every project page says so next
+to the numbers, not in a footnote.
 
-**⚡ Demo:** [auto-annotated-portfolio.netlify.app](https://auto-annotated-portfolio.netlify.app)
+## Develop
 
-## Deploying to Netlify
-
-If you click "Deploy to Netlify" button, it will create a new repo for you that looks exactly like this one, and sets that repo up immediately for deployment on Netlify.
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-templates/auto-annotated-portfolio)
-
-## Getting Started
-
-The typical development process is to begin by working locally. Clone this repository, then run `npm install` in its root directory.
-
-Run the Next.js development server:
-
-```txt
-cd auto-annotated-portfolio
-npm run dev
+```bash
+npm install
+npm run dev      # local dev server
+npm run build    # astro build + data minify → dist/
+npm run preview  # serve the production build locally
 ```
 
-Install the [Netlify visual editor CLI](https://www.npmjs.com/package/@stackbit/cli). Then open a new terminal window in the same project directory and run the Netlify visual editor dev server:
+## Verify
 
-```txt
-npm install -g @stackbit/cli
-stackbit dev
+```bash
+npm test                          # smoke suite (routes, assets, contact-API guards)
+node scripts/verify-web-model.mjs # re-checks the in-browser model against XGBoost
+node scripts/check-live.mjs       # checks the deployed site (needs it to be up)
 ```
 
-This outputs your own Netlify visual editor URL. Open this, register or sign in, and you will be directed to Netlify's visual editor for your new project.
+## Deploy
 
-![Next.js Dev + Netlify visual editor dev](https://assets.stackbit.com/docs/next-dev-stackbit-dev.png)
+Heroku (`realnik-co-uk`, Eco dynos). `server.mjs` serves `dist/` and runs
+`POST /api/contact` (contact form → Resend → inbox, with validation,
+honeypot and rate limiting). Any push to the `heroku` remote redeploys:
 
-## Next Steps
+```bash
+git push heroku main
+```
 
-Here are a few suggestions on what to do next if you're new to Netlify Visual Editor:
+Required config vars on the app: `RESEND_API_KEY`, `RESEND_EMAIL_TO`,
+`RESEND_EMAIL_FROM`. Locally these live in `.env` (gitignored — never commit it).
 
-- Learn [how Netlify Visual Editor works](https://docs.netlify.com/visual-editor/overview/)
-- Check [Netlify visual editor reference documentation](https://visual-editor-reference.netlify.com/)
+## Layout
 
-## Support
-
-If you get stuck along the way, get help in our [support forums](https://answers.netlify.com/).
+```
+src/pages/        # routes (Astro)
+src/components/   # Layout, Nav, Footer, ProjectShowcase, …
+src/scripts/      # client scripts (theme, reveal, count-up, hf-risk-model, …)
+src/styles/       # global.css, fonts.css
+public/           # static assets: hf-risk charts, Card Lab data, CV pdf, fonts
+scripts/          # node checks: smoke-test, verify-web-model, check-live, …
+server.mjs        # production server (static + /api/contact)
+lib/contact-core.mjs  # contact endpoint logic (shared with Netlify function)
+```

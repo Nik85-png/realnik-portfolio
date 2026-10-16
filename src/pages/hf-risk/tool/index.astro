@@ -1,0 +1,1568 @@
+---
+/**
+ * HF-RISK — on-site interactive prototype.
+ *
+ * This page replaces the Flask service that used to run on Render. The old
+ * tool POSTed to /api/predict on a free-tier dyno, so the first visitor after
+ * an idle period met a "Cold-start / unreachable" badge instead of a result.
+ * Here the exported XGBoost ensembles are evaluated in the browser
+ * (src/scripts/hf-risk-model.js), so there is no service to be asleep, no
+ * input leaves the visitor's machine, and the two model arms — with and
+ * without the three Glasgow Coma Scale components — can be compared directly.
+ */
+import Layout from '../../../components/Layout.astro';
+import SectionHeadInline from '../../../components/SectionHeadInline.astro';
+
+const CASE_URL = '/hf-risk/';
+const GITHUB_URL = 'https://github.com/Nik85-png/hf-risk-heart-failure-ml';
+const MODEL_URL = '/data/hf-risk-models.json';
+
+// Two arms, one cohort: the with-GCS arm is the baseline arm plus exactly
+// these three features. Both numbers below were reproduced locally from
+// scripts/09_mimic_native_gcs_retrain.py and match results/mimic_gcs_run_log.md.
+const arms = [
+  { key: 'baseline', label: 'Without GCS', features: 34, auroc: '0.8266', auprc: '0.6369', brier: '0.1174', ece: '0.0157' },
+  { key: 'with_gcs', label: 'With GCS', features: 37, auroc: '0.8352', auprc: '0.6678', brier: '0.1122', ece: '0.0112' },
+];
+
+// Every one of the 37 inputs the model uses is on this page. Nothing is filled
+// in behind the visitor's back: untouched numeric fields fall back to the
+// derivation-cohort median, which is shown beside each field once the model
+// metadata loads.
+const groups = [
+  {
+    title: 'Patient',
+    note: 'Age and sex as recorded for the index admission.',
+    fields: [
+      { name: 'age', label: 'Age', unit: 'years', min: 30, max: 100, step: 1, help: 'Adult heart-failure admissions only; the cohort contains no under-18s.' },
+      { name: 'gender', label: 'Sex', type: 'select', options: [{ v: 0, t: 'Female' }, { v: 1, t: 'Male' }] },
+      { name: 'cci_score', label: 'Charlson index', unit: 'score', min: 0, max: 14, step: 1, help: 'As recorded in this extract. It is not recomputed from the toggles below.' },
+    ],
+  },
+  {
+    title: 'Comorbidities',
+    note: 'Counts derived from ICD-coded diagnoses for the admission.',
+    fields: [
+      { name: 'myocardial_infarction', label: 'Prior myocardial infarction', type: 'flag' },
+      { name: 'congestive_heart_failure', label: 'Congestive heart failure', type: 'flag' },
+      { name: 'peripheral_vascular_disease', label: 'Peripheral vascular disease', type: 'flag' },
+      { name: 'cerebrovascular_disease', label: 'Cerebrovascular disease', type: 'flag' },
+      { name: 'dementia', label: 'Dementia', type: 'flag' },
+      { name: 'copd', label: 'Chronic pulmonary disease', type: 'flag' },
+      { name: 'peptic_ulcer_disease', label: 'Peptic ulcer disease', type: 'flag' },
+      { name: 'diabetes', label: 'Diabetes', type: 'flag' },
+      { name: 'moderate_to_severe_ckd', label: 'Moderate-to-severe CKD', type: 'flag' },
+      { name: 'liver_disease', label: 'Liver disease', type: 'flag' },
+      { name: 'solid_tumor', label: 'Solid tumour', type: 'flag' },
+      { name: 'aids', label: 'AIDS', type: 'flag' },
+      { name: 'hemiplegia', label: 'Hemiplegia', type: 'flag' },
+    ],
+  },
+  {
+    title: 'Renal and electrolytes',
+    note: 'First values recorded for the admission, in the cohort\'s units.',
+    fields: [
+      { name: 'creatinine', label: 'Creatinine', unit: 'mg/dL', min: 0.2, max: 12, step: 0.01 },
+      { name: 'urea', label: 'Urea nitrogen', unit: 'mg/dL', min: 2, max: 200, step: 1 },
+      { name: 'sodium', label: 'Sodium', unit: 'mEq/L', min: 110, max: 165, step: 1 },
+      { name: 'potassium', label: 'Potassium', unit: 'mEq/L', min: 2, max: 7.5, step: 0.1 },
+      { name: 'chloride', label: 'Chloride', unit: 'mEq/L', min: 75, max: 130, step: 1 },
+      { name: 'bicarbonate', label: 'Bicarbonate', unit: 'mEq/L', min: 5, max: 45, step: 1 },
+      { name: 'calcium', label: 'Calcium', unit: 'mg/dL', min: 5, max: 14, step: 0.1 },
+      { name: 'anion_gap', label: 'Anion gap', unit: 'mEq/L', min: 2, max: 40, step: 1 },
+    ],
+  },
+  {
+    title: 'Haematology and cardiac markers',
+    note: 'Same windows as above; BNP and troponin are left as recorded.',
+    fields: [
+      { name: 'hemoglobin', label: 'Haemoglobin', unit: 'g/dL', min: 5, max: 20, step: 0.1 },
+      { name: 'hematocrit', label: 'Haematocrit', unit: '%', min: 15, max: 60, step: 0.1 },
+      { name: 'platelet', label: 'Platelets', unit: 'K/uL', min: 10, max: 700, step: 1 },
+      { name: 'white_blood_cell', label: 'White cell count', unit: 'K/uL', min: 0.5, max: 40, step: 0.1 },
+      { name: 'red_blood_cell', label: 'Red blood cell count', unit: 'M/uL', min: 1.5, max: 7, step: 0.01 },
+      { name: 'mcv', label: 'Mean corpuscular volume', unit: 'fL', min: 55, max: 130, step: 1 },
+      { name: 'rdw', label: 'Red cell distribution width', unit: '%', min: 10, max: 30, step: 0.1 },
+      { name: 'albumin', label: 'Albumin', unit: 'g/dL', min: 1, max: 6, step: 0.1 },
+      { name: 'brain_natriuretic_peptide', label: 'BNP', unit: 'pg/mL', min: 0, max: 5000, step: 1 },
+      { name: 'troponin_t', label: 'Troponin T', unit: 'ng/mL', min: 0, max: 10, step: 0.01 },
+    ],
+  },
+];
+
+const gcsFields = [
+  { name: 'eye_opening', label: 'Eye opening', min: 1, max: 4, help: '1 none, 2 to pain, 3 to speech, 4 spontaneous.' },
+  { name: 'verbal_response', label: 'Verbal response', min: 1, max: 5, help: 'Coded 0 for "untestable (intubated)" in MIMIC; 0 is treated as not assessed, and 1–5 are the real responses.' },
+  { name: 'movement', label: 'Motor response', min: 1, max: 6, help: '1 none to 6 obeys commands.' },
+];
+
+const limits = [
+  'Research prototype. Not a medical device, not validated for clinical use, and not a substitute for clinical judgement.',
+  'The model is retrospective. It was fitted and evaluated on a single MIMIC-IV extract, with no prospective or external validation of this particular pair of models.',
+  'The outcome label mixes deaths in hospital with deaths after discharge — audited in full on the case-study page. Until the re-extraction lands, a reading describes "death within six months of the discharge date", which is not the same thing as surviving to discharge and then dying.',
+  'Each arm is a separately trained model, so the difference between them is not a pure "effect of GCS" — it also carries the usual variance of two independently fitted ensembles.',
+  'GCS is charted for 28.1% of these admissions. If it is left blank here the with-GCS model uses its trained missing-value branch, which is how the majority of the cohort was handled.',
+  'The ICU-only subgroup quoted on the case-study page is selected on severity, so it is a collider subgroup and stays descriptive.',
+  'Discrimination is moderate. AUROC 0.8352 means the model ranks patients usefully, not that it identifies who will die.',
+];
+---
+
+<Layout
+  title="HF-RISK tool — heart-failure 6-month mortality, with and without GCS"
+  description="A leakage-audited MIMIC-IV heart-failure model that runs entirely in your browser: compare 6-month mortality predictions with and without the Glasgow Coma Scale components, on 37 transparent inputs, with real holdout calibration."
+  ogType="article"
+  ogImage="/hf-risk/assets/shap_bar_icu_only.png"
+  keywords={[
+    'heart failure risk calculator',
+    'Glasgow Coma Scale mortality prediction',
+    'MIMIC-IV heart failure model',
+    'in-browser machine learning',
+    'XGBoost clinical prediction prototype',
+  ]}
+  schema={{
+    '@type': 'SoftwareApplication',
+    '@id': 'https://realnik.co.uk/hf-risk/tool/#app',
+    name: 'HF-RISK research prototype',
+    applicationCategory: 'HealthApplication',
+    operatingSystem: 'Web browser',
+    url: 'https://realnik.co.uk/hf-risk/tool/',
+    description:
+      'Browser-side demonstration of a patient-grouped MIMIC-IV heart-failure model for 6-month mortality, comparing a 34-feature baseline with a 37-feature model that adds the three Glasgow Coma Scale components.',
+    isPartOf: { '@id': 'https://realnik.co.uk/hf-risk/#article' },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'GBP' },
+  }}
+>
+  <div class="tool">
+
+    <div class="warn-strip" role="note">
+      <span class="warn-dot" aria-hidden="true">!</span>
+      <p>
+        <strong>Research prototype — not for clinical use.</strong>
+        It demonstrates a method on a de-identified research cohort. It cannot assess a real patient,
+        it has not been validated anywhere prospectively, and nothing you enter leaves your browser.
+      </p>
+    </div>
+
+    <nav class="crumbs wrap" aria-label="Breadcrumb">
+      <a href={CASE_URL}><span aria-hidden="true">&larr;</span> HF-RISK case study</a>
+      <span class="crumbs-sep" aria-hidden="true">/</span>
+      <span>Interactive prototype</span>
+    </nav>
+
+    <header class="hero wrap">
+      <p class="eyebrow" data-reveal>HF-RISK · interactive prototype</p>
+      <h1 data-reveal="1">The same model, <em>running in your browser.</em></h1>
+      <p class="deck" data-reveal="2">
+        Two patient-grouped XGBoost models for six-month mortality after a heart-failure admission —
+        one on 34 clinical inputs, one on the same 34 plus the three Glasgow Coma Scale components.
+        The ensembles are exported from the retrain script and evaluated locally, so there is no
+        service to cold-start and no reading to wait for.
+      </p>
+
+      <dl class="hero-meta" data-reveal="3">
+        <div><dt>Cohort</dt><dd>MIMIC-IV heart-failure admissions</dd></div>
+        <div><dt>Split</dt><dd>Patient-grouped 80/20, seed 17</dd></div>
+        <div><dt>Holdout</dt><dd>8,749 admissions · 1,830 deaths (20.9%)</dd></div>
+        <div><dt>Outcome</dt><dd>Death within 6 months of the discharge date</dd></div>
+      </dl>
+
+      <div class="stat-strip" data-reveal="4" role="list">
+        <div class="stat" role="listitem">
+          <p class="k" data-count="42990">0</p>
+          <p class="lbl">Admissions</p><p class="sub">18,890 patients · 8,006 with more than one</p>
+        </div>
+        <div class="stat" role="listitem">
+          <p class="k" data-count="0.8086" data-decimals="4">0</p>
+          <p class="lbl">Mean AUROC at 6 months</p><p class="sub">0.8266 without GCS · 0.8352 with GCS</p>
+        </div>
+        <div class="stat" role="listitem">
+          <p class="k" data-count="0.0086" data-decimals="4" data-prefix="+">0</p>
+          <p class="lbl">Paired AUROC gain from GCS</p><p class="sub">95% CI 0.0054–0.0120</p>
+        </div>
+        <div class="stat" role="listitem">
+          <p class="k" data-count="0.0112" data-decimals="4">0</p>
+          <p class="lbl">Calibration error, with GCS</p><p class="sub">Brier 0.1122 on the holdout</p>
+        </div>
+      </div>
+    </header>
+
+<!-- ===== the reading ===== -->
+    <section class="section wrap" id="reading" aria-labelledby="reading-h">
+      <SectionHeadInline
+        id="reading-h"
+        num="The reading"
+        title="Change an input, <em>watch the estimate move.</em>"
+        lede="All 37 inputs the model uses are on this page, grouped and labelled. Anything you leave alone stays at the derivation-cohort median, which is printed beside the field once the model metadata loads — nothing is filled in behind your back."
+      />
+
+      <div class="lab">
+        <form class="lab-form" id="labForm" autocomplete="off" novalidate>
+          <div class="lab-toolbar">
+            <div>
+              <p class="lab-toolbar-k">Inputs</p>
+              <p class="lab-toolbar-n" id="labCount">37 model inputs</p>
+            </div>
+            <div class="lab-toolbar-actions">
+              <button class="btn btn-ghost lab-btn" type="button" id="medianBtn">Cohort medians</button>
+              <button class="btn btn-ghost lab-btn" type="button" id="gcsBtn">Mark GCS unassessed</button>
+            </div>
+          </div>
+
+          {groups.map((g) => (
+            <fieldset class="group">
+              <legend>{g.title}</legend>
+              <p class="group-note">{g.note}</p>
+              <div class="group-grid">
+                {g.fields.map((f) => (
+                  <label class="field" data-fname={f.name}>
+                    <span class="field-k">{f.label}{f.unit && <span class="field-unit"> ({f.unit})</span>}</span>
+                    {f.type === 'select' ? (
+                      <select name={f.name} data-feature={f.name}>
+                        {f.options.map((o) => <option value={o.v}>{o.t}</option>)}
+                      </select>
+                    ) : f.type === 'flag' ? (
+                      <span class="flag-wrap">
+                        <input type="checkbox" name={f.name} data-feature={f.name} value="1" />
+                        <span class="flag-box" aria-hidden="true"></span>
+                      </span>
+                    ) : (
+                      <input
+                        type="number"
+                        name={f.name}
+                        data-feature={f.name}
+                        min={f.min}
+                        max={f.max}
+                        step={f.step}
+                        inputmode="decimal"
+                      />
+                    )}
+                    {f.help && <span class="field-help">{f.help}</span>}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+
+          <fieldset class="group group-gcs">
+            <legend>Neurological assessment</legend>
+            <p class="group-note">
+              Glasgow Coma Scale components. Leave a box empty to record that it was
+              <em>not assessed</em> — the model then takes its trained missing-value branch, which is
+              how 71.9% of this cohort was handled. Clearing the boxes is the honest way to say
+              "nobody measured this".
+            </p>
+            <div class="group-grid">
+              {gcsFields.map((f) => (
+                <label class="field" data-fname={f.name}>
+                  <span class="field-k">{f.label}</span>
+                  <input type="number" name={f.name} data-feature={f.name} data-gcs="1" min={f.min} max={f.max} step="1" inputmode="numeric" />
+                  {f.help && <span class="field-help">{f.help}</span>}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </form>
+
+        <aside class="out" id="out" aria-live="polite">
+          <div class="out-head">
+            <div class="armtoggle" role="group" aria-label="Which model arm to read">
+              {arms.map((a) => (
+                <button type="button" class="armbtn" data-arm={a.key} aria-pressed={a.key === 'baseline' ? 'true' : 'false'}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            <p class="out-state" id="outState">Loading the exported model…</p>
+          </div>
+
+          <div class="readout">
+            <div class="dial">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dial-track" cx="60" cy="60" r="52" />
+                <circle class="dial-val" id="dialVal" cx="60" cy="60" r="52" />
+              </svg>
+              <div class="dial-mid">
+                <p class="dial-num"><span id="pctNum">–</span><span class="dial-sym">%</span></p>
+                <p class="dial-lbl">6-month death</p>
+              </div>
+            </div>
+
+            <div class="readout-body">
+              <p class="readout-k" id="readoutK">Waiting for the model</p>
+              <p class="readout-p" id="readoutP">
+                The probability appears here once the exported ensembles have been fetched from this
+                site. The file is served from <code>/data/</code> and cached, so this happens once per visit.
+              </p>
+              <ul class="readout-facts" id="readoutFacts"></ul>
+            </div>
+          </div>
+
+          <div class="cmp">
+            {arms.map((a) => (
+              <div class="cmp-card" data-card={a.key}>
+                <p class="cmp-k">{a.label}</p>
+                <p class="cmp-v"><span data-cmp-pct={a.key}>–</span>%</p>
+                <p class="cmp-m">{a.features} inputs · AUROC {a.auroc}</p>
+              </div>
+            ))}
+            <p class="cmp-delta" id="cmpDelta">Difference between the arms appears here.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="lab-wide">
+        <figure class="panel stripfig">
+          <figcaption class="cap-head">
+            <span class="cap-k">Where this reading sits</span>
+            <span class="cap-n" id="stripArm">Without GCS</span>
+          </figcaption>
+          <svg class="strip" id="stripSvg" viewBox="0 0 1000 214" role="img" aria-labelledby="stripDesc">
+            <desc id="stripDesc">Distribution of predicted six-month mortality across the 8,749 held-out admissions, with the current reading marked.</desc>
+            <defs>
+              <linearGradient id="densFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" style="stop-color:var(--theme-primary);stop-opacity:0.42" />
+                <stop offset="100%" style="stop-color:var(--theme-primary);stop-opacity:0.03" />
+              </linearGradient>
+            </defs>
+            <g class="grid" aria-hidden="true">
+              <line x1="250" y1="0" x2="250" y2="150" />
+              <line x1="500" y1="0" x2="500" y2="150" />
+              <line x1="750" y1="0" x2="750" y2="150" />
+              <line x1="1000" y1="0" x2="1000" y2="150" />
+              <text x="0" y="120">0%</text>
+              <text x="1000" y="120" text-anchor="end">100%</text>
+            </g>
+            <path class="dens" id="densPath" d="" fill="url(#densFill)" stroke="var(--theme-primary)" stroke-width="2" stroke-linejoin="round" />
+            <g class="prev" id="prevMark">
+              <line y1="0" y2="150" />
+              <text y="168">holdout event rate 20.9%</text>
+            </g>
+            <g class="mk mk-base" id="mkBase">
+              <line y1="0" y2="150" />
+              <circle cy="150" r="7" />
+              <text y="180">without</text>
+            </g>
+            <g class="mk mk-gcs" id="mkGcs">
+              <line y1="0" y2="150" />
+              <circle cy="150" r="7" />
+              <text y="198">with GCS</text>
+            </g>
+          </svg>
+          <p class="cap-note" id="stripNote">
+            One bar per 2.1% slice of predicted risk, counted over the held-out admissions for the
+            selected arm. The dashes mark the share of those patients who actually died within six months.
+          </p>
+        </figure>
+
+        <figure class="panel attrfig">
+          <figcaption class="cap-head">
+            <span class="cap-k">What the GCS components are doing</span>
+            <span class="cap-n" id="attrState">waiting…</span>
+          </figcaption>
+          <div class="attr-rows" id="attrRows">
+            {gcsFields.map((f) => (
+              <div class="arow" data-row={f.name}>
+                <div class="arow-head">
+                  <span class="arow-k">{f.label}</span>
+                  <span class="arow-v" data-phi={f.name}>–</span>
+                </div>
+                <div class="atrack"><i class="afill" data-fill={f.name}></i><span class="azero" aria-hidden="true"></span></div>
+                <p class="arow-n" data-val={f.name}>not assessed</p>
+              </div>
+            ))}
+          </div>
+          <p class="attr-span" id="attrSpan">–</p>
+          <details class="attr-why">
+            <summary>How these numbers are produced</summary>
+            <p>
+              Each bar is the <strong>exact Shapley value</strong> of that component inside the with-GCS
+              model, holding the other 34 inputs at your values. Three features means 3! = 6 orderings, so
+              it is computed exactly rather than sampled: no approximation is involved. A component that is
+              not assessed enters as a missing value, which is the model's own trained branch for it, so the
+              three bars sum precisely to the difference between "GCS unknown" and "GCS as entered".
+              This is an attribution of the GCS block within this model — it is not a full-model SHAP
+              explanation, and it is not labelled as one.
+            </p>
+          </details>
+        </figure>
+      </div>
+
+      <figure class="panel calfig">
+        <figcaption class="cap-head">
+          <span class="cap-k">Does the number mean what it says?</span>
+          <span class="cap-n">Calibration, both arms, on the holdout</span>
+        </figcaption>
+        <div class="cal-wrap">
+          <svg class="cal" id="calSvg" viewBox="0 0 340 340" role="img" aria-labelledby="calDesc">
+            <desc id="calDesc">Predicted versus observed six-month mortality in ten equal-count risk bands of the held-out admissions, for both model arms.</desc>
+            <g class="cgrid" aria-hidden="true">
+              <line x1="96" y1="40" x2="96" y2="320" />
+              <line x1="152" y1="40" x2="152" y2="320" />
+              <line x1="208" y1="40" x2="208" y2="320" />
+              <line x1="264" y1="40" x2="264" y2="320" />
+              <line x1="40" y1="96" x2="320" y2="96" />
+              <line x1="40" y1="152" x2="320" y2="152" />
+              <line x1="40" y1="208" x2="320" y2="208" />
+              <line x1="40" y1="264" x2="320" y2="264" />
+            </g>
+            <text class="ctick" x="40" y="334" text-anchor="start">0%</text>
+            <text class="ctick" x="320" y="334" text-anchor="end">100%</text>
+            <line class="cideal" x1="40" y1="320" x2="320" y2="40" />
+            <polyline class="cline" id="calBase" points="" />
+            <polyline class="cline gcs" id="calGcs" points="" />
+            <circle class="cdot" id="calBaseDot" r="7" />
+            <circle class="cdot gcs" id="calGcsDot" r="7" />
+            <text class="ctick ylab" x="-180" y="14" transform="rotate(-90)">observed rate &rarr;</text>
+          </svg>
+          <div class="cal-side">
+            <table class="cal-table">
+              <thead>
+                <tr><th scope="col">Arm</th><th scope="col">AUROC</th><th scope="col">AUPRC</th><th scope="col">Brier</th><th scope="col">ECE</th></tr>
+              </thead>
+              <tbody>
+                {arms.map((a) => (
+                  <tr data-calrow={a.key}>
+                    <th scope="row">{a.label}</th>
+                    <td>{a.auroc}</td><td>{a.auprc}</td><td>{a.brier}</td><td>{a.ece}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="cal-note">
+              Each point is one tenth of the holdout, so every point carries the same number of patients.
+              The diagonal is perfect calibration. ECE is the reported ten-bin figure; Brier is the mean
+              squared error of the probabilities themselves. Higher AUPRC and lower Brier are better, and
+              AUPRC should be read against the 20.9% event rate — a model that always predicted that rate
+              would score 0.209.
+            </p>
+          </div>
+        </div>
+      </figure>
+    </section>
+
+<!-- ===== how to read it ===== -->
+    <section class="section wrap" id="meaning" aria-labelledby="meaning-h">
+      <SectionHeadInline
+        id="meaning-h"
+        num="How to read it"
+        title="A percentage is a measurement, <em>not a verdict.</em>"
+        lede="A predicted probability from a retrospective cohort model is one of the least dramatic quantities in medicine. Here is exactly what the number on this page is, what it is not, and which parts of it are uncertain."
+      />
+
+      <div class="mean-grid">
+        <article class="mean-card" data-reveal>
+          <p class="mean-k">What the number is</p>
+          <h3>The model's estimate for a profile, not for a person</h3>
+          <p>
+            The ensembles output the rate at which admissions <em>with these 37 values</em> died within six
+            months in the derivation cohort. It is a cohort-level probability attached to a profile. Two
+            real patients can share every input here and have completely different outcomes; that is a
+            property of the measurement, not a failure of the model.
+          </p>
+        </article>
+
+        <article class="mean-card" data-reveal="1">
+          <p class="mean-k">What the number is not</p>
+          <h3>Not a prognosis, not a triage input, not a treatment effect</h3>
+          <p>
+            Nothing here models what happens <em>next</em>: not the treatment given, not the ward, not the
+            patient's own trajectory, not the quality of care. The model has never been tested
+            prospectively and has never seen a patient from your hospital. Compare it with a cohort
+            prevalence, never with an individual.
+          </p>
+        </article>
+
+        <article class="mean-card" data-reveal="2">
+          <p class="mean-k">Why the two arms agree</p>
+          <h3>GCS is deliberately left missing</h3>
+          <p>
+            In this cohort GCS is charted for 28.1% of admissions, because it is recorded for patients
+            who reached intensive care and the majority of heart-failure admissions never did. If you
+            clear the three boxes, the with-GCS model takes its trained missing branch and the two arms
+            converge. That is the honest behaviour, and it is also the whole reason the extension is
+            interesting: a variable that mostly exists for the sickest patients will look powerful.
+          </p>
+        </article>
+
+        <article class="mean-card" data-reveal="3">
+          <p class="mean-k">What the numbers show</p>
+          <h3>Moderate discrimination, close calibration</h3>
+          <p>
+            AUROC 0.8352 with GCS and 0.8266 without: the model orders patients usefully and gets the
+            ordering wrong often enough that it is not a classifier. Calibration is the better news — a
+            ten-bin expected calibration error of 0.0112 means predicted and observed rates tracked
+            within about one percentage point across the whole range, so the <em>size</em> of the number
+            is more trustworthy than its rank order suggests.
+          </p>
+        </article>
+
+        <article class="mean-card" data-reveal>
+          <p class="mean-k">The GCS increment</p>
+          <h3>+0.0086 AUROC, and what it may be made of</h3>
+          <p>
+            Adding the three components raised six-month AUROC by 0.0086 (95% CI 0.0054–0.0120) and
+            28-day AUROC by 0.0138 (0.0090–0.0194) on the same holdout patients. An ICU-stay flag from
+            the <code>icustays</code> table does not reproduce that gain at six months (+0.0014, CI
+            −0.0012 to 0.0040), so it is not simply "was this patient sick enough for intensive care".
+            That is the honest reading of what has been measured so far — and the label audit on the
+            case-study page is the reason a further test is needed.
+          </p>
+        </article>
+
+        <article class="mean-card mean-card-warn" data-reveal="1">
+          <p class="mean-k">The open question</p>
+          <h3>Part of that signal may be an artefact of the label</h3>
+          <p>
+            Dying in hospital and dying after discharge are different events. GCS is lowest in the
+            patients closest to death in hospital, so if the outcome label mixes the two, GCS is
+            unusually well placed to absorb the in-hospital signal. The prediction being tested is that
+            the GCS increment shrinks in a survivors-to-discharge arm and that GCS predicts in-hospital
+            death better than post-discharge death. Until that runs, the +0.0086 is a measurement
+            awaiting a mechanism check, not a settled effect.
+          </p>
+        </article>
+      </div>
+    </section>
+
+<!-- ===== provenance and limits ===== -->
+    <section class="section wrap" id="provenance" aria-labelledby="prov-h">
+      <SectionHeadInline
+        id="prov-h"
+        num="Provenance"
+        title="Why you can trust <em>the numbers on this page.</em>"
+        lede="A browser demo is only worth the evidence behind it. This one ships the exported ensembles, the metrics computed on the same holdout, and a script that re-checks the browser against XGBoost every time the model or the code changes."
+      />
+
+      <div class="prov-grid">
+        <article class="panel prov" data-reveal>
+          <p class="mean-k">The chain</p>
+          <ol class="chain">
+            <li><code>scripts/08_mimic_gcs_extraction.py</code> pulls the MIMIC-IV heart-failure cohort with the GCS components.</li>
+            <li><code>scripts/09a_icu_stay_flags.py</code> adds an ICU-stay flag from <code>icustays</code>, independent of whether GCS was charted.</li>
+            <li><code>scripts/09_mimic_native_gcs_retrain.py</code> fits both arms on a patient-grouped split and writes <code>results/mimic_gcs_run_log.md</code>.</li>
+            <li><code>scripts/11_export_web_model.py</code> re-runs that protocol, asserts the reproduced AUROCs equal the logged ones, and exports the trees, medians, holdout calibration and a parity fixture to <code>{MODEL_URL}</code>.</li>
+            <li><code>src/scripts/hf-risk-model.js</code> walks those trees in the browser, and <code>scripts/verify-web-model.mjs</code> re-checks it in Node.</li>
+          </ol>
+        </article>
+
+        <article class="panel prov" data-reveal="1">
+          <p class="mean-k">The checks that actually ran</p>
+          <dl class="checks">
+            <div><dt>Reproduced AUROCs</dt><dd>0.8266 and 0.8352, identical to the run log. The export aborts if they drift by more than 0.002.</dd></div>
+            <div><dt>Browser against XGBoost</dt><dd>120 held-out patients re-evaluated from the exported trees alone: maximum probability difference 6.3&times;10<sup>-7</sup>.</dd></div>
+            <div><dt>GCS attribution</dt><dd>Maximum difference from the Python computation 5.6&times;10<sup>-7</sup>, and the three shares sum to the exact span to 4.4&times;10<sup>-16</sup>.</dd></div>
+            <div><dt>Float32 fidelity</dt><dd>The walker rounds threshold comparisons and leaf accumulation through float32, because XGBoost does. In float64 the traversal disagreed on 265 of 20,000 sampled tree decisions.</dd></div>
+            <div><dt>Published metrics</dt><dd>Brier 0.1122 and ECE 0.0112 reproduce the values logged in the run log for the with-GCS arm.</dd></div>
+          </dl>
+          <pre class="prov-cmd"><code>node scripts/verify-web-model.mjs
+python scripts/11_export_web_model.py</code></pre>
+        </article>
+
+        <article class="panel prov" data-reveal="2">
+          <p class="mean-k">What it runs on, precisely</p>
+          <p class="prov-p">
+            XGBoost, 400 trees, depth 6, learning rate 0.05, subsample 0.8, seed 17. The split is
+            <code>GroupShuffleSplit</code> at 80/20 grouped on <code>subject_id</code>, and the script asserts
+            zero patient overlap before scoring — 8,006 of the 18,890 patients have more than one
+            heart-failure admission, one of them 59, so a row-level split would have put the same person on
+            both sides. Non-GCS missing values are filled with training-set medians computed on training
+            rows only; GCS is never imputed.
+          </p>
+          <p class="prov-p">
+            The model targets <strong>death within six months of the discharge date</strong>, which — as the
+            label audit on the case-study page explains — includes deaths in hospital. That is a limitation
+            of the label, not a detail, and it is the reason the mechanism test is the next piece of work
+            rather than a footnote.
+          </p>
+        </article>
+      </div>
+
+      <div class="limits" data-reveal>
+        <h3>Limitations, stated plainly</h3>
+        <ul>{limits.map((l) => <li>{l}</li>)}</ul>
+      </div>
+
+      <div class="tool-cta" data-reveal>
+        <p>
+          The full method, including the leakage audit, the cross-cohort SHAP comparison and the MIMIC-IV
+          transport check, is written up on the case-study page.
+        </p>
+        <div class="tool-cta-row">
+          <a class="btn btn-solid" href={CASE_URL}>Read the case study <span class="arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-ghost" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">Source on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tool-foot wrap" aria-label="Page sections">
+      <a href="#reading">The reading</a>
+      <a href="#meaning">How to read it</a>
+      <a href="#provenance">Provenance</a>
+      <a href={CASE_URL}>Case study</a>
+    </nav>
+
+    <noscript>
+      <p class="wrap noscript">
+        The calculator needs JavaScript, because the model is evaluated in your browser rather than on a
+        server. Every number it produces is listed in the calibration table and the case study, so the
+        page is still readable without it.
+      </p>
+    </noscript>
+
+<style>
+  /* ---------- shell ---------- */
+
+  .tool { --card: color-mix(in oklch, var(--bg) 93%, white); }
+  [data-theme='dark'] .tool { --card: color-mix(in oklch, var(--bg) 93%, black); }
+
+  .tool .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 520px) { .tool .stat-strip { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) {
+    .tool .stat-strip { grid-template-columns: 1fr; }
+    .tool .stat { border-left: 0; }
+    .tool .stat:nth-child(n+2) { border-top: 1px solid var(--rule-soft); }
+  }
+  .tool .stat .k { font-variant-numeric: tabular-nums; }
+
+  /* ---------- warning strip ---------- */
+
+  .warn-strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px var(--pad-x);
+    background: color-mix(in oklch, var(--theme-complementary) 13%, var(--bg));
+    border-bottom: 1px solid color-mix(in oklch, var(--theme-complementary) 38%, transparent);
+    font-size: 12.5px;
+  }
+
+  .warn-strip p { margin: 0; max-width: 110ch; color: var(--fg); }
+
+  .warn-dot {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--theme-complementary);
+    color: var(--bg);
+    font-family: var(--font-display);
+    font-size: 12px;
+  }
+
+  /* ---------- breadcrumbs ---------- */
+
+  .crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding-block: 16px 0;
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+
+  .crumbs a { text-decoration: none; }
+  .crumbs a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+  .crumbs-sep { opacity: 0.5; }
+
+  /* ---------- hero ---------- */
+
+  .hero { padding-block: clamp(40px, 5vw, 72px) clamp(32px, 4vw, 56px); }
+
+  .hero h1 {
+    font-size: clamp(38px, 6vw, 84px);
+    max-width: 18ch;
+    margin-bottom: 0.34em;
+  }
+
+  .hero h1 em { font-style: italic; font-weight: 400; color: var(--fg-muted); }
+
+  .hero .deck {
+    max-width: 68ch;
+    font-size: clamp(15px, 1.35vw, 17.5px);
+    color: var(--fg-muted);
+    margin: 0 0 clamp(26px, 3vw, 40px);
+  }
+
+  .hero-meta {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--rule-soft);
+    border: 1px solid var(--rule-soft);
+    margin: 0 0 clamp(26px, 3vw, 40px);
+  }
+
+  .hero-meta > div { background: var(--bg); padding: 16px 18px; }
+
+  .hero-meta dt {
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin-bottom: 6px;
+  }
+
+  .hero-meta dd { margin: 0; font-size: 13px; }
+
+  @media (max-width: 760px) { .hero-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* ---------- lab layout ---------- */
+
+  .lab {
+    display: grid;
+    grid-template-columns: minmax(0, 1.22fr) minmax(0, 0.78fr);
+    gap: clamp(20px, 2.6vw, 38px);
+    align-items: start;
+  }
+
+  @media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }
+
+  .lab-form { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
+
+  .lab-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .lab-toolbar-k {
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin: 0 0 3px;
+  }
+
+  .lab-toolbar-n { margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .lab-toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lab-btn { padding: 7px 13px; font-size: 11.5px; }
+
+  .group { border: 0; border-bottom: 1px solid var(--rule-soft); margin: 0; padding: 18px; }
+  .group:last-of-type { border-bottom: 0; }
+
+  .group legend {
+    font-family: var(--font-display);
+    font-size: 15px;
+    padding: 0;
+    margin-bottom: 4px;
+  }
+
+  .group-note {
+    font-size: 12px;
+    color: var(--fg-muted);
+    margin: 0 0 14px;
+    max-width: 74ch;
+  }
+
+  .group-note em { font-style: italic; }
+
+  .group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+    gap: 12px 16px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+  .field-k { font-size: 11.5px; color: var(--fg-muted); }
+  .field-unit { opacity: 0.75; }
+
+  .field input[type='number'],
+  .field select {
+    width: 100%;
+    font: inherit;
+    font-size: 13.5px;
+    color: var(--fg);
+    background: color-mix(in oklch, var(--bg) 70%, transparent);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-variant-numeric: tabular-nums;
+    transition: border-color 200ms var(--ease-out), background-color 200ms var(--ease-out);
+  }
+
+  .field input[type='number'] { font-family: var(--font-body); }
+
+  .field input[type='number']:focus,
+  .field select:focus {
+    border-color: var(--theme-primary);
+    background: var(--bg);
+    outline: none;
+  }
+
+  .field input[type='number']::placeholder { color: color-mix(in oklch, var(--fg) 34%, transparent); }
+
+  .field-help { font-size: 10.8px; line-height: 1.45; color: var(--fg-muted); }
+
+  /* checkbox drawn as a switch-ish box so the 13 comorbidities stay compact */
+  .flag-wrap { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 34px; }
+  .flag-wrap input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+  .flag-box {
+    width: 42px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1px solid var(--rule);
+    background: color-mix(in oklch, var(--fg) 6%, transparent);
+    position: relative;
+    transition: background-color 220ms var(--ease-out), border-color 220ms var(--ease-out);
+  }
+
+  .flag-box::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--fg-muted);
+    transition: transform 240ms var(--ease-out), background-color 220ms var(--ease-out);
+  }
+
+  .flag-wrap input:checked + .flag-box { background: color-mix(in oklch, var(--theme-complementary) 42%, transparent); border-color: var(--theme-complementary); }
+  .flag-wrap input:checked + .flag-box::after { transform: translateX(20px); background: var(--bg); }
+  .flag-wrap input:focus-visible + .flag-box { outline: 2px solid var(--theme-primary); outline-offset: 3px; }
+
+  .group-gcs { border-top: 1px solid var(--rule); }
+  .group-gcs .group-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+  /* ---------- output panel ---------- */
+
+  .out {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    overflow: hidden;
+  }
+
+  @media (min-width: 1000px) { .out { position: sticky; top: 84px; } }
+
+  .out-head {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--rule-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .armtoggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--fg) 5%, transparent);
+    position: relative;
+  }
+
+  .armbtn {
+    font: inherit;
+    font-size: 12px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    transition: color 200ms var(--ease-out), background-color 240ms var(--ease-out);
+  }
+
+  .armbtn[aria-pressed='true'] {
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  .out-state { margin: 0; font-size: 11.6px; color: var(--fg-muted); }
+  .out-state.is-warn { color: color-mix(in oklch, var(--theme-complementary) 80%, var(--fg)); }
+  .out-state.is-err { color: var(--theme-complementary); }
+
+  /* ---------- dial ---------- */
+
+  .readout { padding: 20px 18px; display: flex; gap: 20px; align-items: flex-start; }
+  @media (max-width: 520px) { .readout { flex-direction: column; align-items: center; } }
+
+  .dial { position: relative; width: 132px; flex: 0 0 auto; }
+  .dial svg { width: 100%; display: block; transform: rotate(-90deg); }
+  .dial circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+  .dial-track { stroke: color-mix(in oklch, var(--fg) 11%, transparent); }
+
+  .dial-val {
+    stroke: var(--theme-primary);
+    stroke-dasharray: 326.7;
+    stroke-dashoffset: 326.7;
+    transition: stroke-dashoffset 780ms var(--ease-out), stroke 300ms var(--ease-out);
+  }
+
+  .dial-val.is-base { stroke: color-mix(in oklch, var(--fg) 52%, transparent); }
+
+  .dial-mid {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+  }
+
+  .dial-num {
+    font-family: var(--font-display);
+    font-size: 30px;
+    line-height: 1;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dial-sym { font-size: 15px; color: var(--fg-muted); margin-left: 1px; }
+
+  .dial-lbl {
+    font-size: 9.6px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin: 6px 0 0;
+  }
+
+  .readout-body { min-width: 0; }
+
+  .readout-k {
+    font-family: var(--font-display);
+    font-size: 15px;
+    margin: 0 0 8px;
+  }
+
+  .readout-p { font-size: 12.6px; line-height: 1.6; color: var(--fg-muted); margin: 0 0 12px; }
+  .readout-p strong { color: var(--fg); }
+
+  .readout-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+
+  .readout-facts li {
+    font-size: 11.8px;
+    color: var(--fg-muted);
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .readout-facts li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--theme-primary);
+  }
+
+  /* ---------- comparison ---------- */
+
+  .cmp {
+    padding: 16px 18px 18px;
+    border-top: 1px solid var(--rule-soft);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .cmp-card {
+    border: 1px solid var(--rule-soft);
+    border-radius: 6px;
+    padding: 12px;
+    transition: border-color 260ms var(--ease-out), background-color 260ms var(--ease-out);
+  }
+
+  .cmp-card.is-active { border-color: var(--fg); background: color-mix(in oklch, var(--fg) 5%, transparent); }
+
+  .cmp-k { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 6px; }
+  .cmp-v { font-family: var(--font-display); font-size: 24px; line-height: 1; margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+  .cmp-m { font-size: 10.8px; color: var(--fg-muted); margin: 0; }
+  .cmp-delta { grid-column: 1 / -1; font-size: 12.2px; color: var(--fg-muted); margin: 2px 0 0; }
+
+  /* ---------- density strip + attribution ---------- */
+
+  .lab-wide {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+    gap: clamp(18px, 2.4vw, 30px);
+    margin-top: clamp(18px, 2.4vw, 30px);
+  }
+
+  @media (max-width: 1000px) { .lab-wide { grid-template-columns: 1fr; } }
+
+  .cap-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .cap-k { font-family: var(--font-display); font-size: 14px; }
+
+  .cap-n {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  .cap-n.is-warn { color: color-mix(in oklch, var(--theme-complementary) 82%, var(--fg)); }
+
+  .strip { width: 100%; display: block; }
+  .strip .grid line { stroke: var(--rule-soft); stroke-width: 1; }
+  .strip .grid text { fill: var(--fg-muted); font-size: 11px; font-family: var(--font-body); }
+
+  .strip .dens { transition: opacity 320ms var(--ease-out); }
+
+  .strip .prev line {
+    stroke: color-mix(in oklch, var(--fg) 34%, transparent);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 5;
+  }
+
+  .strip .prev text {
+    fill: var(--fg-muted);
+    font-size: 11px;
+    font-family: var(--font-body);
+    text-anchor: end;
+  }
+
+  .strip .mk { transition: transform 520ms var(--ease-out); }
+  .strip .mk line { stroke-width: 2.5; }
+  .strip .mk text { font-size: 11px; font-family: var(--font-body); text-anchor: middle; fill: var(--fg-muted); }
+  .strip .mk-base line, .strip .mk-base circle { stroke: var(--fg-muted); }
+  .strip .mk-base circle { fill: var(--bg); }
+  .strip .mk-gcs line, .strip .mk-gcs circle { stroke: var(--theme-primary); }
+  .strip .mk-gcs circle { fill: var(--theme-primary); }
+  .strip .mk-base line { stroke-dasharray: 3 4; }
+
+  .strip.is-collapsed .mk-base { opacity: 0; }
+
+  .cap-note { font-size: 11.6px; line-height: 1.55; color: var(--fg-muted); margin: 12px 0 0; }
+
+  .attr-rows { display: grid; gap: 14px; }
+  .arow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .arow-k { font-size: 12.2px; }
+  .arow-v { font-family: var(--font-display); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  .atrack {
+    position: relative;
+    height: 7px;
+    margin: 7px 0 6px;
+    background: color-mix(in oklch, var(--fg) 8%, transparent);
+    border-radius: 999px;
+  }
+
+  .azero {
+    position: absolute;
+    left: 50%;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: color-mix(in oklch, var(--fg) 30%, transparent);
+  }
+
+  .afill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    border-radius: 999px;
+    background: var(--theme-complementary);
+    transition: width 620ms var(--ease-out), background-color 300ms var(--ease-out), left 300ms var(--ease-out);
+  }
+
+  .afill.neg { right: 50%; left: auto; background: var(--theme-primary); }
+  .arow-n { font-size: 10.8px; color: var(--fg-muted); margin: 0; }
+  .attr-span { font-size: 12.4px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--rule-soft); }
+  .attr-span strong { font-family: var(--font-display); }
+
+  .attr-why { margin-top: 14px; font-size: 12px; color: var(--fg-muted); }
+  .attr-why summary { cursor: pointer; color: var(--fg); font-size: 12px; }
+  .attr-why p { margin: 10px 0 0; line-height: 1.6; }
+  .attr-why strong { color: var(--fg); }
+
+  /* ---------- calibration ---------- */
+
+  .calfig { margin-top: clamp(18px, 2.4vw, 30px); }
+
+  .cal-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    gap: clamp(20px, 3vw, 44px);
+    align-items: start;
+  }
+
+  @media (max-width: 820px) { .cal-wrap { grid-template-columns: 1fr; } }
+
+  .cal { width: 100%; max-width: 380px; display: block; }
+  .cal .cgrid line { stroke: var(--rule-soft); stroke-width: 1; }
+
+  .cal .cideal {
+    stroke: color-mix(in oklch, var(--fg) 30%, transparent);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 5;
+  }
+
+  .cal .cline {
+    fill: none;
+    stroke: var(--theme-complementary);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+  }
+
+  .cal .cline.gcs { stroke: var(--theme-primary); }
+  .cal .cdot { fill: var(--theme-complementary); stroke: var(--bg); stroke-width: 2; }
+  .cal .cdot.gcs { fill: var(--theme-primary); }
+  .cal .cdot.is-active { stroke: var(--fg); }
+  .cal .ctick { fill: var(--fg-muted); font-size: 11px; font-family: var(--font-body); }
+  .cal .ylab { text-anchor: middle; }
+
+  .cal-table { width: 100%; border-collapse: collapse; font-size: 12.6px; font-variant-numeric: tabular-nums; }
+
+  .cal-table th, .cal-table td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--rule-soft); }
+  .cal-table thead th { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-muted); font-weight: 400; }
+  .cal-table tbody th { text-align: left; font-weight: 400; font-family: var(--font-body); }
+  .cal-table tbody tr { transition: background-color 220ms var(--ease-out); }
+  .cal-table tbody tr.is-active { background: color-mix(in oklch, var(--fg) 5%, transparent); }
+  .cal-note { font-size: 11.8px; line-height: 1.6; color: var(--fg-muted); margin: 14px 0 0; max-width: 72ch; }
+
+  /* ---------- meaning ---------- */
+
+  .mean-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule-soft); }
+  @media (max-width: 1000px) { .mean-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 660px) { .mean-grid { grid-template-columns: 1fr; } }
+
+  .mean-card { background: var(--bg); padding: clamp(20px, 2.4vw, 30px); }
+  .mean-card-warn { background: color-mix(in oklch, var(--theme-complementary) 7%, var(--bg)); }
+  .mean-k { font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 10px; }
+  .mean-card h3 { font-size: 17px; margin-bottom: 0.55em; }
+  .mean-card p { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
+  .mean-card p em { font-style: italic; color: var(--fg); }
+  .mean-card code { font-size: 12px; }
+
+  /* ---------- provenance ---------- */
+
+  .prov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 2.4vw, 30px); }
+  @media (max-width: 1000px) { .prov-grid { grid-template-columns: 1fr; } }
+
+  .chain { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+  .chain li { font-size: 12.6px; color: var(--fg-muted); }
+  .chain code, .prov-p code { font-family: var(--font-body); font-size: 11.2px; word-break: break-word; }
+
+  .checks { margin: 0; display: grid; gap: 11px; }
+  .checks > div { border-bottom: 1px solid var(--rule-soft); padding-bottom: 10px; }
+  .checks > div:last-child { border-bottom: 0; padding-bottom: 0; }
+  .checks dt { font-size: 12.2px; color: var(--fg); margin-bottom: 4px; }
+  .checks dd { margin: 0; font-size: 12px; color: var(--fg-muted); line-height: 1.55; }
+
+  .prov-cmd {
+    margin: 14px 0 0;
+    background: color-mix(in oklch, var(--fg) 6%, transparent);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+
+  .prov-cmd code { font-family: var(--font-body); font-size: 11.4px; white-space: pre; }
+  .prov-p { font-size: 12.8px; color: var(--fg-muted); line-height: 1.65; margin: 0 0 12px; }
+
+  .limits { margin-top: clamp(28px, 3.4vw, 48px); }
+  .limits h3 { font-size: 19px; margin-bottom: 0.6em; }
+  .limits ul { margin: 0; padding-left: 20px; display: grid; gap: 9px; max-width: 92ch; }
+  .limits li { font-size: 13px; color: var(--fg-muted); }
+
+  .tool-cta {
+    margin-top: clamp(28px, 3.4vw, 48px);
+    border-top: 1px solid var(--rule);
+    padding-top: clamp(20px, 2.6vw, 32px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .tool-cta p { margin: 0; font-size: 13.4px; color: var(--fg-muted); max-width: 58ch; }
+  .tool-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
+
+  .tool-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    padding-block: 26px 60px;
+    border-top: 1px solid var(--rule-soft);
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+
+  .tool-foot a { text-decoration: none; }
+  .tool-foot a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+
+  .noscript { padding-block: 20px; font-size: 13px; color: var(--fg-muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .strip .mk, .afill, .dial-val { transition: none; }
+  }
+</style>
+
+<script>
+  import {
+    loadModelData,
+    predictBoth,
+    gcsAttribution,
+    gcsPresence,
+    riskPercentile,
+    probability,
+  } from '../../../scripts/hf-risk-model.js';
+
+  const MODEL_URL = '/data/hf-risk-models.json';
+  const CIRC = 326.7; // 2*pi*r for the 52-unit dial radius
+
+  const form = document.getElementById('labForm');
+  const outState = document.getElementById('outState');
+  const pctNum = document.getElementById('pctNum');
+  const dialVal = document.getElementById('dialVal');
+  const readoutK = document.getElementById('readoutK');
+  const readoutP = document.getElementById('readoutP');
+  const readoutFacts = document.getElementById('readoutFacts');
+  const cmpDelta = document.getElementById('cmpDelta');
+  const densPath = document.getElementById('densPath');
+  const mkBase = document.getElementById('mkBase');
+  const mkGcs = document.getElementById('mkGcs');
+  const stripArm = document.getElementById('stripArm');
+  const stripNote = document.getElementById('stripNote');
+  const calBase = document.getElementById('calBase');
+  const calGcs = document.getElementById('calGcs');
+  const calBaseDot = document.getElementById('calBaseDot');
+  const calGcsDot = document.getElementById('calGcsDot');
+  const attrRows = document.getElementById('attrRows');
+  const attrSpan = document.getElementById('attrSpan');
+  const attrState = document.getElementById('attrState');
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let data = null;
+  let arm = 'baseline';
+  let firstDraw = true;
+  let last = null;
+
+  const ARM_LABEL = { baseline: 'Without GCS', with_gcs: 'With GCS' };
+
+  function pctText(p) {
+    const v = p * 100;
+    if (v < 1) return v.toFixed(2);
+    if (v < 10) return v.toFixed(1);
+    return v.toFixed(1);
+  }
+
+  /** Tween a number element so a change reads as a movement, not a jump. */
+  function tween(el, from, to, decimals, suffix) {
+    if (reduced || from === null || Math.abs(to - from) < 1e-9) {
+      el.textContent = to.toFixed(decimals) + (suffix || '');
+      return;
+    }
+    const start = performance.now();
+    const dur = 620;
+    function tick(now) {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = (from + (to - from) * eased).toFixed(decimals) + (suffix || '');
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function readForm() {
+    const byName = {};
+    form.querySelectorAll('[data-feature]').forEach((el) => {
+      const name = el.dataset.feature;
+      if (el.type === 'checkbox') {
+        byName[name] = el.checked ? 1 : 0;
+      } else if (el.tagName === 'SELECT') {
+        byName[name] = Number(el.value);
+      } else {
+        const raw = el.value.trim();
+        // MIMIC codes verbal response 0 as "untestable (intubated)", and the
+        // training pipeline treats 0 as missing. Keeping that mapping here is
+        // what stops a 0 typed into the box becoming a fabricated score.
+        if (name === 'verbal_response' && raw === '0') {
+          byName[name] = null;
+        } else {
+          byName[name] = raw === '' ? null : Number(raw);
+        }
+      }
+    });
+    return byName;
+  }
+
+  function applyMedians() {
+    if (!data) return;
+    data.features.forEach((f) => {
+      const el = form.querySelector('[data-feature="' + f.name + '"]');
+      if (!el) return;
+      const m = f.median;
+      if (el.type === 'checkbox') {
+        el.checked = Number(m) >= 0.5;
+      } else if (el.tagName === 'SELECT') {
+        el.value = String(Math.round(Number(m)));
+      } else {
+        const dec = f.step < 0.1 ? 2 : f.step < 1 ? 1 : 0;
+        el.value = Number(m).toFixed(dec);
+        el.title = 'Derivation-cohort ' + (f.gcs ? 'charted' : 'training') + ' median: ' + m;
+      }
+    });
+  }
+
+  function clearGcs() {
+    form.querySelectorAll('[data-gcs]').forEach((el) => { el.value = ''; });
+    render();
+  }
+
+  /** Stepped-area path for the holdout risk density. */
+  function densityPath(dist) {
+    const H = 150;
+    const n = dist.n_bins;
+    const hi = dist.max || 1;
+    const max = Math.max.apply(null, dist.counts.concat([1]));
+    const bw = (hi * 1000) / n;
+    let d = 'M0 ' + H;
+    for (let i = 0; i < n; i++) {
+      const h = (dist.counts[i] / max) * H;
+      d += ' L' + (i * bw).toFixed(2) + ' ' + (H - h).toFixed(2);
+      d += ' L' + ((i + 1) * bw).toFixed(2) + ' ' + (H - h).toFixed(2);
+    }
+    return d + ' L' + (n * bw).toFixed(2) + ' ' + H + ' Z';
+  }
+
+  function calPoints(bins) {
+    return bins.map((b) => {
+      const x = 40 + b.predicted * 280;
+      const y = 320 - b.observed * 280;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+  }
+
+  function nearestBin(bins, p) {
+    let best = 0;
+    for (let i = 1; i < bins.length; i++) {
+      if (Math.abs(bins[i].predicted - p) < Math.abs(bins[best].predicted - p)) best = i;
+    }
+    return bins[best];
+  }
+
+  function render() {
+    if (!data) return;
+    const byName = readForm();
+    const r = predictBoth(data, byName);
+    const active = r[arm];
+    const M = data.models[arm];
+
+    // --- dial and headline number
+    const prevPct = last ? last.p * 100 : null;
+    tween(pctNum, prevPct, active.probability * 100, 1);
+    dialVal.style.strokeDashoffset = String(CIRC * (1 - active.probability));
+    dialVal.classList.toggle('is-base', arm === 'baseline');
+
+    // --- plain-language reading, built only from exported values
+    const dist = M.distribution;
+    const pctile = riskPercentile(dist, active.probability);
+    const evRate = (M.prevalence * 100).toFixed(1);
+    readoutK.textContent = ARM_LABEL[arm] + ' \u00b7 ' + M.n_features + ' inputs';
+
+    const presence = gcsPresence(data, byName);
+    let paragraph =
+      'The model puts a profile with these ' + M.n_features + ' values at <strong>' +
+      pctText(active.probability) + '%</strong> for death within six months of the discharge date. ' +
+      'It ranks patients usefully at AUROC ' + data.meta.auroc[arm].reproduced_auc.toFixed(4) +
+      ', but it is not a classifier and it cannot tell you which individual will die. ';
+    if (arm === 'with_gcs' && !presence.all) {
+      paragraph +=
+        'GCS is not assessed here, so this arm is reading its trained missing-value branch for all ' +
+        'three components \u2014 which is why it tracks the other arm so closely.';
+    } else if (arm === 'with_gcs') {
+      paragraph +=
+        'All three GCS components are assessed, so this arm has more information than the baseline ' +
+        'and the two readings are not like-for-like.';
+    } else {
+      paragraph +=
+        'This is the 34-input arm, which never sees a neurological assessment at all.';
+    }
+    readoutP.innerHTML = paragraph;
+
+    const facts = [
+      'Sits above about ' + Math.round(pctile) + '% of the holdout by predicted risk (median ' +
+        (dist.quantiles.p50 * 100).toFixed(1) + '%, p95 ' + (dist.quantiles.p95 * 100).toFixed(0) + '%).',
+      'Holdout: ' + data.meta.test_n.toLocaleString() + ' admissions, ' +
+        data.meta.test_positives.toLocaleString() + ' deaths (' + evRate + '%).',
+      'AUPRC ' + M.auprc + ' \u00b7 Brier ' + M.brier + ' \u00b7 ECE ' + M.calibration.ece +
+        ' \u2014 against a ' + evRate + '% event rate, guessing the base rate every time would score 0.209 AUPRC.',
+      'GCS charted for only ' + (data.meta.gcs_coverage * 100).toFixed(1) + '% of this cohort, so the ' +
+        'assessed and unassessed branches are not symmetric.',
+    ];
+    if (presence.all) {
+      facts.push('GCS entered: eye ' + byName.eye_opening + ' \u00b7 verbal ' + byName.verbal_response +
+        ' \u00b7 motor ' + byName.movement + '.');
+    } else if (arm === 'with_gcs') {
+      facts.push('GCS not assessed \u2014 the with-GCS model is on its missing-value branch.');
+    }
+    readoutFacts.innerHTML = facts.map((f) => '<li>' + f + '</li>').join('');
+
+    // --- both arms, never hidden
+    document.querySelectorAll('[data-cmp-pct]').forEach((el) => {
+      el.textContent = pctText(r[el.dataset.cmpPct].probability);
+    });
+    document.querySelectorAll('.cmp-card').forEach((c) => {
+      c.classList.toggle('is-active', c.dataset.card === arm);
+    });
+
+    const d = r.deltaPoints;
+    const sign = d >= 0 ? '+' : '\u2212';
+    cmpDelta.textContent =
+      'Adding the three GCS components moves this estimate by ' + sign + Math.abs(d).toFixed(2) +
+      ' percentage points (' + pctText(r.baseline.probability) + '% \u2192 ' +
+      pctText(r.with_gcs.probability) + '%). Across the whole holdout the same change moved AUROC from ' +
+      data.meta.auroc.baseline.reproduced_auc + ' to ' + data.meta.auroc.with_gcs.reproduced_auc + ' (+' +
+      data.meta.delta_auroc + ', 95% CI 0.0054\u20130.0120).';
+
+    // --- density strip
+    densPath.setAttribute('d', densityPath(dist));
+    const bx = Math.min(1000, Math.max(0, r.baseline.probability * 1000));
+    const gx = Math.min(1000, Math.max(0, r.with_gcs.probability * 1000));
+    if (firstDraw && !reduced) {
+      mkBase.setAttribute('transform', 'translate(0,0)');
+      mkGcs.setAttribute('transform', 'translate(0,0)');
+      requestAnimationFrame(() => {
+        mkBase.setAttribute('transform', 'translate(' + bx.toFixed(1) + ',0)');
+        mkGcs.setAttribute('transform', 'translate(' + gx.toFixed(1) + ',0)');
+      });
+    } else {
+      mkBase.setAttribute('transform', 'translate(' + bx.toFixed(1) + ',0)');
+      mkGcs.setAttribute('transform', 'translate(' + gx.toFixed(1) + ',0)');
+    }
+    stripArm.textContent = ARM_LABEL[arm] + ' distribution';
+    stripNote.textContent =
+      'One bar per ' + ((dist.max * 100) / dist.n_bins).toFixed(2) + '% slice of predicted risk, counted over the ' +
+      data.meta.test_n.toLocaleString() + ' held-out admissions using the ' + ARM_LABEL[arm].toLowerCase() +
+      ' model (' + M.n_features + ' inputs). The dashed line marks the share of those patients who actually died ' +
+      'within six months \u2014 the density sits to the left of it because most predicted risks are below the base rate.';
+
+    // --- calibration
+    calBase.setAttribute('points', calPoints(data.models.baseline.calibration.bins).join(' '));
+    calGcs.setAttribute('points', calPoints(data.models.with_gcs.calibration.bins).join(' '));
+    const cb = nearestBin(data.models.baseline.calibration.bins, r.baseline.probability);
+    const cg = nearestBin(data.models.with_gcs.calibration.bins, r.with_gcs.probability);
+    calBaseDot.setAttribute('cx', String(40 + cb.predicted * 280));
+    calBaseDot.setAttribute('cy', String(320 - cb.observed * 280));
+    calGcsDot.setAttribute('cx', String(40 + cg.predicted * 280));
+    calGcsDot.setAttribute('cy', String(320 - cg.observed * 280));
+    calBaseDot.classList.toggle('is-active', arm === 'baseline');
+    calGcsDot.classList.toggle('is-active', arm === 'with_gcs');
+    document.querySelectorAll('[data-calrow]').forEach((row) => {
+      row.classList.toggle('is-active', row.dataset.calrow === arm);
+    });
+
+    // --- exact GCS attribution
+    const att = gcsAttribution(data, byName);
+    const maxPhi = Math.max.apply(null, att.contributions.map((c) => Math.abs(c.phi)).concat([1e-6]));
+    att.contributions.forEach((c) => {
+      const vEl = attrRows.querySelector('[data-phi="' + c.name + '"]');
+      const fEl = attrRows.querySelector('[data-fill="' + c.name + '"]');
+      const nEl = attrRows.querySelector('[data-val="' + c.name + '"]');
+      const rounded = Math.abs(c.phi) < 5e-4 ? 0 : c.phi;
+      vEl.textContent = (rounded >= 0 ? '+' : '\u2212') + Math.abs(rounded).toFixed(3) + ' log-odds';
+      const w = c.present ? Math.min(50, (Math.abs(rounded) / maxPhi) * 50) : 0;
+      fEl.style.width = w + '%';
+      fEl.classList.toggle('neg', rounded < 0);
+      nEl.textContent = c.present
+        ? 'assessed \u2014 entered as ' + (Number.isInteger(c.value) ? c.value : c.value.toFixed(2))
+        : 'not assessed \u2014 missing-value branch; contributes nothing by construction';
+    });
+
+    if (att.contributions.every((c) => c.present)) {
+      attrState.textContent = 'all three assessed';
+      attrState.classList.remove('is-warn');
+      attrSpan.innerHTML =
+        'With GCS unknown the model reads <strong>' + (probability(att.unknownMargin) * 100).toFixed(1) +
+        '%</strong>; with it known, <strong>' + (probability(att.knownMargin) * 100).toFixed(1) + '%</strong>. ' +
+        'That is a shift of ' + att.spanPoints.toFixed(2) + ' percentage points (' +
+        att.spanLogOdds.toFixed(3) + ' log-odds) inside the with-GCS model, and the three shares above add to exactly that.';
+    } else if (att.contributions.some((c) => c.present)) {
+      attrState.textContent = 'partly assessed';
+      attrState.classList.add('is-warn');
+      attrSpan.textContent =
+        'Only some components are assessed. A component left blank enters as a missing value, so it is ' +
+        'contributing nothing by construction rather than contributing zero \u2014 those two are not the same claim.';
+    } else {
+      attrState.textContent = 'nothing assessed';
+      attrState.classList.add('is-warn');
+      attrSpan.textContent =
+        'No GCS component is assessed, so the with-GCS model is reading its missing-value branch for all three. ' +
+        'Fill the boxes in the form to see what the assessment actually changes.';
+    }
+
+    last = { p: active.probability };
+    firstDraw = false;
+    const countLabel = document.getElementById('labCount');
+    if (countLabel) {
+      const filled = Object.keys(byName).filter((k) => byName[k] !== null).length;
+      countLabel.textContent = filled + ' of ' + Object.keys(byName).length + ' inputs set';
+    }
+  }
+
+  // --- wiring
+  form.addEventListener('submit', (e) => e.preventDefault());
+  form.addEventListener('input', render);
+  form.addEventListener('change', render);
+
+  document.querySelectorAll('.armbtn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      arm = btn.dataset.arm;
+      document.querySelectorAll('.armbtn').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.dataset.arm === arm));
+      });
+      last = null;
+      render();
+    });
+  });
+
+  document.getElementById('medianBtn').addEventListener('click', () => {
+    applyMedians();
+    last = null;
+    render();
+  });
+
+  document.getElementById('gcsBtn').addEventListener('click', clearGcs);
+
+  (async function boot() {
+    try {
+      data = await loadModelData(MODEL_URL);
+      applyMedians();
+      outState.textContent =
+        'Model loaded \u2014 ' + data.meta.n_admissions.toLocaleString() + ' admissions, exported ' +
+        data.meta.generated + '. Nothing you enter is sent anywhere.';
+      outState.classList.remove('is-warn');
+      render();
+    } catch (err) {
+      outState.textContent = 'The exported model could not be loaded, so no reading is shown.';
+      outState.classList.add('is-err');
+      readoutK.textContent = 'Model unavailable';
+      readoutP.textContent =
+        'The ensembles are a static file served from this site (' + MODEL_URL + '). If it failed to load, the ' +
+        'figures on this page and the case study still hold \u2014 only the live calculator is disabled.';
+      readoutFacts.innerHTML = '';
+    }
+  })();
+</script>
+
+  </div>
+</Layout>

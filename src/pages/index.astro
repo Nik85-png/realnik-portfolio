@@ -1,0 +1,1114 @@
+---
+import Layout from '../components/Layout.astro';
+import ProjectShowcase from '../components/ProjectShowcase.astro';
+import SectionHead from '../components/SectionHead.astro';
+import Tag from '../components/Tag.astro';
+
+const email = 'prajapatinick85@gmail.com';
+const SITE = 'https://realnik.co.uk';
+
+// --- Key numbers (drives the hero stat strip) -------------------------------
+const stats = [
+  { value: '2,008', count: 2008, label: 'Heart-failure patients', sub: 'HF-RISK cohort, Zhang / PhysioNet' },
+  { value: '0.710', count: 0.71, decimals: 3, label: 'AUROC at 6 months', sub: 'After the leakage audit' },
+  { value: '42,990', count: 42990, label: 'MIMIC-IV admissions', sub: 'External transport check' },
+  { value: '845', count: 845, label: 'Card-sorting trials', sub: '714 usable after cleaning' },
+];
+
+// --- Achievements -----------------------------------------------------------
+const education = [
+  {
+    title: 'MSc Data Analytics',
+    org: 'London Metropolitan University',
+    when: 'Jul 2026',
+    note: 'Dissertation: HF-RISK — heart-failure outcome prediction with a full leakage audit, a MIMIC-IV GCS extension and a Streamlit prototype.',
+  },
+  {
+    title: 'B.Sc. Mathematics',
+    org: 'Gujarat University',
+    when: 'Jun 2021',
+    note: 'Where the modelling instincts started.',
+  },
+  {
+    title: 'Bachelor of Education',
+    org: 'Gujarat University',
+    when: 'Apr 2023',
+    note: 'A separate degree, not a second B.Sc. — the explaining half.',
+  },
+];
+
+const highlights = [
+  {
+    metric: '0.819 → 0.710',
+    title: 'Cut a heart-failure model down to the honest number',
+    body: 'An early pass hit 0.819 AUROC at six months. The leakage audit removed features that only exist after the outcome, and I reported the 0.710 that survived.',
+  },
+  {
+    metric: 'MIMIC-IV',
+    title: 'Tested transportability instead of claiming it',
+    body: 'Transferred the same pipeline to 42,990 MIMIC-IV admissions with no retraining — 0.599 AUROC, presented as a domain-shift check, not a clinical result.',
+  },
+  {
+    metric: '845 trials',
+    title: 'Turned messy behavioural logs into a readable signal',
+    body: 'Cleaned 845 recorded card-sorting trials down to 714 usable ones and shipped a nine-view interactive explorer with move-by-move retry tracing.',
+  },
+  {
+    metric: '28-day · 3-month',
+    title: 'Found where the simpler model wins',
+    body: 'Random Forest took the short horizons — 0.781 and 0.839 AUROC — while XGBoost led at six months. Benchmarks include baselines, not just the winner.',
+  },
+  {
+    metric: 'TMX China',
+    title: 'Calibrated AI responses against a quality rubric',
+    body: 'Scored and calibrated LLM output, then fed systematic failure patterns back to the model team as a structured feedback loop.',
+  },
+  {
+    metric: 'Ladbrokes / Entain',
+    title: 'Lead a floor while studying full-time',
+    body: 'Customer Service Manager: shift rota, escalations and coaching under Gala Coral Group brand standards — compliance-adjacent work where the data has to be right.',
+  },
+];
+
+// --- Featured work ----------------------------------------------------------
+const projects = [
+  {
+    index: '01',
+    eyebrow: 'Heart-failure ML · MSc Dissertation · 2026',
+    title: 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+    lede: 'Five models, four outcome horizons, 2,008 patients — and a leakage audit that cut the headline AUROC from 0.819 to 0.710 before I believed a single digit of it. Then a patient-grouped retrain inside MIMIC-IV tested the GCS signal properly.',
+    facts: [
+      { k: 'Primary result', v: '0.710 AUROC · 6-month mortality' },
+      { k: 'Short horizons', v: '0.781 / 0.839 AUROC' },
+      { k: 'GCS extension', v: '+0.0138 AUROC · MIMIC-IV' },
+      { k: 'External set', v: '42,990 MIMIC-IV admissions' },
+    ],
+    tags: ['Python', 'XGBoost', 'Random Forest', 'SHAP', 'MIMIC-IV', 'Survival analysis'],
+    href: '/hf-risk/',
+    cta: 'Read the case study',
+    image: '/hf-risk/assets/auroc_heatmap.png',
+    imageAlt: 'AUROC heatmap comparing five heart-failure models across four outcome horizons after the leakage audit',
+    thumbs: [
+      { src: '/hf-risk/assets/roc_curves.png', alt: 'ROC curves for the held-out heart-failure cohort across four horizons' },
+      { src: '/hf-risk/assets/shap_bar.png', alt: 'SHAP bar chart of global feature importance for the heart-failure model' },
+      { src: '/hf-risk/assets/km_by_nyha.png', alt: 'Kaplan-Meier survival curves split by NYHA heart-failure class' },
+    ],
+  },
+  {
+    index: '02',
+    eyebrow: 'Behavioural psychology · London Met · 2026',
+    title: 'Interactive Card Sorting — Spatial Organization & Cognitive Strategy',
+    lede: 'Given playing cards — and sometimes blanks — on an 8×8 board, how do people organise what matters? 845 recorded trials show that organisation beats raw effort, and blank cards act as scaffolding.',
+    facts: [
+      { k: 'Trials recorded', v: '845 · 714 usable' },
+      { k: 'Analysis views', v: '9 interactive modes' },
+      { k: 'Key finding', v: 'Organisation > time on task' },
+      { k: 'Blank cards', v: 'Used as scaffolding' },
+    ],
+    tags: ['Python', 'Behavioural analysis', 'Plotly', 'Interactive viewer'],
+    href: '/cards-analysis/',
+    cta: 'Open the card lab',
+    visual: 'board' as const,
+    reversed: true,
+  },
+];
+
+// --- Quick links to the rest of the site ------------------------------------
+const explore = [
+  { title: 'Projects', body: 'Two finished pieces of work, both documented end to end — including what did not survive scrutiny.', href: '/projects/', cta: 'See all projects' },
+  { title: 'HF-RISK case study', body: 'The leakage audit (0.819 → 0.710), the Oct 2026 GCS extension (+0.0138 AUROC), holdout calibration (ECE 0.0112) and the MIMIC-IV transport check — in full.', href: '/hf-risk/', cta: 'Read HF-RISK' },
+  { title: 'Card Lab', body: 'The live 8×8 card-sorting explorer: nine analysis modes and move-by-move replay.', href: '/cards-analysis/', cta: 'Open Card Lab' },
+  { title: 'About · CV', body: 'Full work history, education, skills and the downloadable CV as a PDF.', href: '/info/', cta: 'Read about me' },
+];
+
+const capabilities = [
+  { num: 'i', title: 'Predictive modelling', body: 'Regression, survival models and tree ensembles — benchmarked against baselines, never picked by vibes.' },
+  { num: 'ii', title: 'Data quality', body: 'Missingness audits, leakage hunting and feature hygiene before any model gets to see the data.' },
+  { num: 'iii', title: 'Explainability', body: 'SHAP-driven feature reduction and calibration checks, so a stakeholder can see why the model says what it says.' },
+  { num: 'iv', title: 'Reporting', body: 'Reports and dashboards that separate signal from confidence theatre, and name their own limits.' },
+];
+
+const principles = [
+  { num: '01', title: 'Integrity before performance', body: 'A high AUROC built on leaked features is a liability, not an achievement.' },
+  { num: '02', title: 'Explainability is the deliverable', body: 'A model nobody can question is a model nobody can trust.' },
+  { num: '03', title: 'Small is honest', body: 'With 2,008 patients or 845 trials, I report what the data supports — and say so when that is the limit.' },
+];
+
+// --- FAQ (also powers the FAQPage structured data below) --------------------
+const faqs = [
+  {
+    q: 'What is HF-RISK?',
+    a: 'HF-RISK is my MSc dissertation project: a machine-learning model that predicts heart-failure outcomes — 28-day, 3-month and 6-month mortality plus 6-month readmission — across 2,008 patient records from the Zhang / PhysioNet heart-failure cohort. Five model families were benchmarked and the final pipeline carries 143 audited predictors, with SHAP used to explain what the model learned. It was later extended with a patient-grouped retrain inside MIMIC-IV.',
+  },
+  {
+    q: 'What did the Glasgow Coma Scale extension find?',
+    a: 'In the Oct 2026 extension — the current analysis on the case-study page — GCS components (eye opening, verbal response and movement) added a small, consistent AUROC gain when I retrained inside MIMIC-IV: +0.0138 at 28 days (95% CI 0.0090 to 0.0194) and +0.0086 at six months, on a grouped split where no patient appears in both training and test. The control mattered more than the headline: an independent ICU-stay flag alone was a null result at six months (+0.0014), yet GCS still added +0.0104 on top of it — so the gain is not simply “this patient was sick enough for intensive care”. GCS was left missing for the 72% of admissions where it was never charted, rather than imputed as a normal score.',
+  },
+  {
+    q: 'How did you stop the heart-failure model from cheating?',
+    a: 'A leakage audit. My first pass scored 0.819 AUROC at six months, but features such as day of discharge and inpatient record numbers are only written after the outcome is already decided. Removing them dropped the honest result to 0.710 — a lower number that actually means something, and the one I published.',
+  },
+  {
+    q: 'What is the card sorting project about?',
+    a: 'It is a behavioural psychology study of spatial organisation and cognitive strategy. Participants arranged playing cards — including blank cards — on an 8×8 board, and I analysed 845 recorded trials (714 usable) to see how people organise what matters while solving a task.',
+  },
+  {
+    q: 'What did the card sorting analysis find?',
+    a: 'Organisation beat raw effort. How a board was arranged predicted completion better than how long someone spent on it, and blank cards worked as scaffolding — markers that made structure easier to hold on to. The interactive viewer traces all nine analysis views, including move-by-move replay of individual trials.',
+  },
+  {
+    q: 'Can the HF-RISK model be used clinically?',
+    a: 'No. It is a research prototype, not a clinical tool. The numbers describe one 2021 cohort plus a transportability check against 42,990 MIMIC-IV admissions (0.599 AUROC without retraining), and the current Oct 2026 analysis is a patient-grouped MIMIC-IV retrain testing the GCS signal — still retrospective, with no prospective validation. It is deliberately framed as research-only.'
+  },
+  {
+    q: 'What tools and methods do you use?',
+    a: 'Python — pandas, NumPy, scikit-learn, XGBoost, lifelines, SHAP, Plotly and Streamlit — plus SQL, R and JavaScript for the viewer work. The method matters more than the library: leakage auditing, calibration, subgroup checks and honest reporting of failure modes.',
+  },
+  {
+    q: 'Are you available for work?',
+    a: 'Yes. I am based in London and available now for graduate data analyst, data science and analytics engineering roles. The fastest way to reach me is the contact form on this page, or by email at prajapatinick85@gmail.com.',
+  },
+];
+
+// --- Structured data --------------------------------------------------------
+const profilePage = {
+  '@type': 'ProfilePage',
+  '@id': `${SITE}/#webpage`,
+  url: SITE,
+  name: 'Nikunj Prajapati — Data Analytics Portfolio',
+  description:
+    'Homepage of Nikunj Prajapati, MSc Data Analytics postgraduate in London: heart-failure machine-learning research and behavioural card-sorting analysis.',
+  isPartOf: { '@id': `${SITE}/#website` },
+  about: { '@id': `${SITE}/#person` },
+  primaryImageOfPage: { '@type': 'ImageObject', url: `${SITE}/images/nikunj-profile.jpg` },
+  inLanguage: 'en-GB',
+};
+
+const hfRiskSchema = {
+  '@type': 'ScholarlyArticle',
+  '@id': `${SITE}/hf-risk/#article`,
+  headline: 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+  name: 'HF-RISK — Predicting Heart Failure Outcomes with Machine Learning',
+  description:
+    'MSc dissertation project: a leakage-audited machine-learning pipeline predicting 28-day, 3-month and 6-month mortality and 6-month readmission in 2,008 heart-failure patients, reaching 0.710 AUROC at six months with 0.599 transport to MIMIC-IV. Extended in 2026 with a patient-grouped MIMIC-IV retrain testing Glasgow Coma Scale components against a 34-feature baseline and an ICU-stay control.',
+  url: `${SITE}/hf-risk/`,
+  datePublished: '2026-03-20',
+  dateModified: '2026-10-07',
+  inLanguage: 'en-GB',
+  author: { '@id': `${SITE}/#person` },
+  about: [
+    { '@type': 'MedicalCondition', name: 'Heart failure' },
+    { '@type': 'Thing', name: 'Heart failure outcome prediction' },
+    { '@type': 'Thing', name: 'Machine learning in healthcare' },
+  ],
+  keywords: [
+    'heart failure prediction',
+    'heart failure machine learning',
+    'Glasgow Coma Scale mortality prediction',
+    'clinical predictive modelling',
+    'leakage audit',
+    'AUROC',
+    'SHAP explainability',
+    'XGBoost',
+    'MIMIC-IV external validation',
+  ],
+  isPartOf: { '@id': `${SITE}/#website` },
+};
+
+const cardSortingSchema = {
+  '@type': 'CreativeWork',
+  '@id': `${SITE}/cards-analysis/#work`,
+  name: 'Interactive Card Sorting — Spatial Organization & Cognitive Strategy',
+  description:
+    'A behavioural psychology data project analysing 845 recorded card-sorting trials on an 8×8 board, with a nine-view interactive viewer showing that spatial organisation predicts completion better than time on task and that blank cards act as scaffolding.',
+  url: `${SITE}/cards-analysis/`,
+  inLanguage: 'en-GB',
+  creator: { '@id': `${SITE}/#person` },
+  about: [
+    { '@type': 'Thing', name: 'Card sorting' },
+    { '@type': 'Thing', name: 'Cognitive strategy' },
+    { '@type': 'Thing', name: 'Spatial organisation' },
+    { '@type': 'Thing', name: 'Behavioural data analysis' },
+  ],
+  keywords: [
+    'card sorting psychology',
+    'card sorting experiment',
+    'spatial organisation',
+    'cognitive strategy',
+    'behavioural data analysis',
+    'blank card scaffolding',
+  ],
+};
+
+const faqSchema = {
+  '@type': 'FAQPage',
+  '@id': `${SITE}/#faq`,
+  mainEntity: faqs.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
+
+const itemListSchema = {
+  '@type': 'ItemList',
+  '@id': `${SITE}/#featured`,
+  name: 'Featured projects',
+  itemListElement: projects.map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    item: {
+      '@type': i === 0 ? 'ScholarlyArticle' : 'CreativeWork',
+      name: p.title,
+      url: new URL(p.href, SITE).href,
+    },
+  })),
+};
+---
+
+<Layout
+  title="Nikunj Prajapati — Heart Failure ML & Card Sorting Research"
+  description="MSc Data Analytics in London. Heart-failure outcome prediction with machine learning (0.710 AUROC) and a card-sorting study across 845 trials — documented honestly."
+  keywords={[
+    'Nikunj Prajapati',
+    'data analytics portfolio',
+    'heart failure prediction machine learning',
+    'heart failure outcome prediction project',
+    'card sorting psychology project',
+    'clinical machine learning MSc dissertation',
+    'SHAP explainability',
+    'data analyst London',
+  ]}
+  schema={[profilePage, hfRiskSchema, cardSortingSchema, faqSchema, itemListSchema]}
+>
+  <!-- ============ HERO ============ -->
+  <header class="hero wrap">
+    <div class="hero-main">
+      <div class="eyebrow-row" data-reveal>
+        <span>Portfolio · 2026</span>
+        <span aria-hidden="true">/</span>
+        <span>London, UK</span>
+        <span aria-hidden="true">/</span>
+        <span class="live-dot">Open to graduate roles</span>
+      </div>
+
+      <h1 data-reveal="1">Nikunj Prajapati</h1>
+
+      <p class="hero-sub" data-reveal="2">
+        Data analytics postgraduate building <em>leakage-clean</em> clinical and
+        behavioural models.
+      </p>
+
+      <p class="lede" data-reveal="3">
+        I predict heart-failure outcomes on real patient data, analyse how people
+        organise information under pressure, and report the numbers that survive
+        the audit — higher ones included only when they deserve to be.
+      </p>
+
+      <div class="hero-cta" data-reveal="4">
+        <a class="btn btn-solid" href="#contact">
+          Contact me <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+        <a class="btn btn-ghost" href="/projects/">Explore projects</a>
+        <a class="btn btn-ghost" href="/cv/nikunj-prajapati-cv.pdf">
+          Download CV <span class="arrow" aria-hidden="true">&darr;</span>
+        </a>
+      </div>
+    </div>
+
+    <aside class="hero-portrait" data-reveal="2">
+      <img
+        src="/images/nikunj-profile.jpg"
+        alt="Portrait of Nikunj Prajapati, MSc Data Analytics postgraduate in London"
+        width="880"
+        height="1168"
+      />
+      <dl class="portrait-facts">
+        <div><dt>Now</dt><dd>MSc Data Analytics · London Met</dd></div>
+        <div><dt>Day role</dt><dd>Customer Service Manager · Ladbrokes / Entain</dd></div>
+        <div><dt>Focus</dt><dd>Clinical ML · behavioural analytics</dd></div>
+        <div><dt>Available</dt><dd>Now · London &amp; hybrid</dd></div>
+      </dl>
+    </aside>
+  </header>
+
+  <!-- ============ KEY NUMBERS ============ -->
+  <div class="wrap">
+    <div class="stat-strip" role="list">
+      {stats.map((s, i) => (
+        <div class="stat" role="listitem" data-reveal={String(Math.min(i, 4))}>
+          <p class="k" data-count={s.count} data-decimals={s.decimals ?? 0}>0</p>
+          <p class="lbl">{s.label}</p>
+          <p class="sub">{s.sub}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <!-- ============ ACHIEVEMENTS & CREDENTIALS ============ -->
+  <section class="section wrap" aria-labelledby="record-h">
+    <SectionHead
+      id="record-h"
+      num="The record"
+      title="What I've <em>actually done.</em>"
+      lede="Education on one side, results on the other — no adjectives required."
+    />
+
+    <div class="record-grid">
+      <div class="record-col" data-reveal>
+        <p class="block-k">Education &amp; credentials</p>
+        <ul class="edu-list">
+          {education.map((e) => (
+            <li>
+              <span class="edu-when">{e.when}</span>
+              <strong>{e.title}</strong>
+              <span class="edu-org">{e.org}</span>
+              <p>{e.note}</p>
+            </li>
+          ))}
+        </ul>
+        <p class="record-extra">
+          Community volunteer · Metropolitan Police Safer Neighbourhoods (Aug 2025).
+        </p>
+      </div>
+
+      <div class="record-col" data-reveal="1">
+        <p class="block-k">Selected achievements</p>
+        <ol class="highlight-list">
+          {highlights.map((h) => (
+            <li>
+              <span class="hl-metric">{h.metric}</span>
+              <h3>{h.title}</h3>
+              <p>{h.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURED WORK (visual + words) ============ -->
+  <section class="section wrap" aria-labelledby="work-h">
+    <SectionHead
+      id="work-h"
+      num="Featured work"
+      title="Two projects, <em>one standard.</em>"
+      lede="Both finished, both documented end to end — including the parts that didn't work."
+    />
+
+    <div class="showcase-list">
+      {projects.map((p) => (
+        <ProjectShowcase
+          index={p.index}
+          eyebrow={p.eyebrow}
+          title={p.title}
+          lede={p.lede}
+          facts={p.facts}
+          tags={p.tags}
+          href={p.href}
+          cta={p.cta}
+          image={p.image}
+          imageAlt={p.imageAlt}
+          thumbs={p.thumbs}
+          visual={p.visual}
+          reversed={p.reversed}
+        />
+      ))}
+    </div>
+  </section>
+
+  <!-- ============ EXPLORE THE SITE ============ -->
+  <section class="section wrap" aria-labelledby="explore-h">
+    <SectionHead
+      id="explore-h"
+      num="Explore"
+      title="Everything else, <em>one click away.</em>"
+      lede="If you only read the homepage, this is the map. The detail lives one tap further in."
+    />
+
+    <div class="explore-grid">
+      {explore.map((e, i) => (
+        <a class="explore-card" href={e.href} data-reveal={String(Math.min(i + 1, 4))}>
+          <span class="explore-title">{e.title}</span>
+          <span class="explore-body">{e.body}</span>
+          <span class="explore-cta">
+            {e.cta} <span class="arrow" aria-hidden="true">&rarr;</span>
+          </span>
+        </a>
+      ))}
+    </div>
+
+    <div class="quick-actions" data-reveal>
+      <a class="btn btn-solid" href="/cv/nikunj-prajapati-cv.pdf">
+        Download CV (PDF) <span class="arrow" aria-hidden="true">&darr;</span>
+      </a>
+      <a class="btn btn-ghost" href="/hf-risk/tool/">
+        Try the embedded HF-RISK tool <span class="arrow" aria-hidden="true">&rarr;</span>
+      </a>
+      <a class="btn btn-ghost" href={`mailto:${email}`}>
+        Email me <span class="arrow" aria-hidden="true">&rarr;</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ============ CAPABILITIES + PRINCIPLES ============ -->
+  <section class="section wrap" aria-labelledby="caps-h">
+    <SectionHead
+      id="caps-h"
+      num="Capabilities"
+      title="What I actually <em>do.</em>"
+      lede="Four moves, repeated carefully: model, clean, explain, report."
+    />
+
+    <ol class="caps-grid">
+      {capabilities.map((c, i) => (
+        <li data-reveal={String(Math.min(i, 4))}>
+          <span class="cap-num" aria-hidden="true">{c.num}</span>
+          <h3>{c.title}</h3>
+          <p>{c.body}</p>
+        </li>
+      ))}
+    </ol>
+
+    <div class="principles">
+      {principles.map((p, i) => (
+        <div class="principle" data-reveal={String(Math.min(i + 1, 4))}>
+          <p class="approach-num">{p.num}</p>
+          <h3>{p.title}</h3>
+          <p>{p.body}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section wrap" aria-labelledby="faq-h">
+    <SectionHead
+      id="faq-h"
+      num="Questions"
+      title="The things people <em>ask first.</em>"
+      lede="Short answers to the questions that come up most — on the heart-failure model, the card-sorting study, and what I'm looking for next."
+    />
+
+    <div class="faq-list">
+      {faqs.map((f, i) => (
+        <details class="faq" data-reveal={String(Math.min(i + 1, 4))}>
+          <summary>
+            <h3>{f.q}</h3>
+            <span class="faq-toggle" aria-hidden="true">+</span>
+          </summary>
+          <p>{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </section>
+
+  <!-- ============ CONTACT ============ -->
+  <section class="contact-band" id="contact" aria-labelledby="contact-h">
+    <div class="wrap contact-inner">
+      <p class="eyebrow" data-reveal>Contact</p>
+      <h2 data-reveal="1" id="contact-h">Let's build something <em>insightful.</em></h2>
+      <p class="contact-lede" data-reveal="2">
+        Graduate roles, data projects or a question about either case study — send a
+        message and I'll reply within 48 hours.
+      </p>
+
+      <div class="contact-cta" data-reveal="3">
+        <a class="btn btn-solid" href={`mailto:${email}`}>
+          Email me directly <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+        <a class="btn btn-ghost" href="/cv/nikunj-prajapati-cv.pdf">
+          Download CV <span class="arrow" aria-hidden="true">&darr;</span>
+        </a>
+      </div>
+
+      <form class="contact-form" data-reveal="3" data-endpoint="/api/contact" novalidate>
+        <div class="form-fields">
+          <label>
+            <span>Name</span>
+            <input type="text" name="name" required autocomplete="name" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input type="email" name="email" required autocomplete="email" />
+          </label>
+          <label class="full">
+            <span>Topic</span>
+            <input type="text" name="topic" placeholder="Graduate role, project question, or just say hello" />
+          </label>
+          <label class="full">
+            <span>Message</span>
+            <textarea name="message" rows="5" required></textarea>
+          </label>
+          <button class="btn btn-solid" type="submit">
+            Send message <span class="arrow" aria-hidden="true">&rarr;</span>
+          </button>
+          <div class="form-honey" aria-hidden="true">
+            <label>Leave this field empty<input type="text" name="_gotcha" tabindex="-1" autocomplete="off" /></label>
+          </div>
+        </div>
+        <div class="form-status" role="status" aria-live="polite"></div>
+      </form>
+
+      <ul class="contact-tags" data-reveal="4">
+        <li class="tag"><a href={`mailto:${email}`}>{email}</a></li>
+        <li class="tag">London, UK</li>
+        <li class="tag">Available now</li>
+      </ul>
+
+      <div class="contact-elsewhere" data-reveal="4">
+        <span>Elsewhere</span>
+        <Tag tags={['GitHub', 'LinkedIn']} />
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  /* ---------------- hero ---------------- */
+  .hero {
+    display: grid;
+    grid-template-columns: 1.45fr 0.85fr;
+    gap: clamp(28px, 4.5vw, 72px);
+    align-items: start;
+    padding-block: clamp(56px, 8vw, 108px) clamp(36px, 4vw, 56px);
+  }
+
+  .eyebrow-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin-bottom: clamp(20px, 2.6vw, 34px);
+  }
+
+  .live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--theme-primary);
+  }
+
+  .live-dot::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--theme-primary);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--theme-primary) 22%, transparent);
+  }
+
+  .hero h1 {
+    font-size: clamp(46px, 8vw, 116px);
+    line-height: 0.98;
+    margin: 0 0 0.24em;
+  }
+
+  .hero-sub {
+    font-size: clamp(19px, 2.2vw, 30px);
+    line-height: 1.28;
+    margin: 0 0 20px;
+    max-width: 30ch;
+  }
+
+  .hero-sub em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--fg-muted);
+  }
+
+  .lede {
+    max-width: 60ch;
+    font-size: clamp(15px, 1.35vw, 17px);
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
+  .hero-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 30px;
+  }
+
+  .hero-portrait img {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+  }
+
+  .portrait-facts {
+    margin: 18px 0 0;
+    display: grid;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  .portrait-facts div { margin: 0; }
+
+  .portrait-facts dt {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin-bottom: 3px;
+  }
+
+  .portrait-facts dd {
+    margin: 0;
+    font-size: 13.5px;
+  }
+
+  /* ---------------- record / achievements ---------------- */
+  .record-grid {
+    display: grid;
+    grid-template-columns: 0.85fr 1.15fr;
+    gap: clamp(28px, 4vw, 64px);
+    align-items: start;
+  }
+
+  .block-k {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin: 0 0 18px;
+  }
+
+  .edu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .edu-list li {
+    border-left: 1px solid var(--rule);
+    padding-left: 18px;
+  }
+
+  .edu-when {
+    display: block;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--theme-primary);
+    margin-bottom: 6px;
+  }
+
+  .edu-list strong {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 17px;
+  }
+
+  .edu-org {
+    display: block;
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    margin-top: 2px;
+  }
+
+  .edu-list p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--fg-muted);
+  }
+
+  .record-extra {
+    margin: 22px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule-soft);
+    font-size: 12.5px;
+    color: var(--fg-muted);
+  }
+
+  .highlight-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .highlight-list li {
+    border-top: 1px solid var(--rule-soft);
+    padding-block: 18px;
+  }
+
+  .highlight-list li:first-child { border-top: 0; padding-top: 0; }
+
+  .hl-metric {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--theme-primary);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 4px 12px;
+    margin-bottom: 10px;
+  }
+
+  .highlight-list h3 {
+    font-size: 17px;
+    margin: 0 0 6px;
+  }
+
+  .highlight-list p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--fg-muted);
+    max-width: 68ch;
+  }
+
+  /* ---------------- featured work ---------------- */
+  .showcase-list { display: flex; flex-direction: column; }
+
+  /* ---------------- explore ---------------- */
+  .explore-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(14px, 2vw, 22px);
+  }
+
+  .explore-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: clamp(20px, 2.4vw, 30px);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    text-decoration: none;
+    color: inherit;
+    transition: transform 300ms var(--ease-out), border-color 300ms var(--ease-out),
+      box-shadow 300ms var(--ease-out);
+  }
+
+  .explore-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--fg);
+    box-shadow: 0 16px 44px color-mix(in oklch, var(--fg) 10%, transparent);
+  }
+
+  .explore-title {
+    font-family: var(--font-display);
+    font-size: clamp(19px, 2vw, 24px);
+  }
+
+  .explore-body {
+    font-size: 13.5px;
+    color: var(--fg-muted);
+    flex: 1;
+  }
+
+  .explore-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 10.5px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--fg);
+  }
+
+  .explore-card:hover .arrow { transform: translateX(4px); }
+
+  .explore-cta .arrow { display: inline-block; transition: transform 250ms var(--ease-out); }
+
+  .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: clamp(22px, 3vw, 32px);
+    padding-top: clamp(22px, 3vw, 32px);
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  /* ---------------- capabilities + principles ---------------- */
+  .caps-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--rule-soft);
+    border: 1px solid var(--rule-soft);
+  }
+
+  .caps-grid li {
+    background: var(--bg);
+    padding: clamp(22px, 2.6vw, 36px);
+  }
+
+  .cap-num {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 22px;
+    color: var(--theme-primary);
+    display: block;
+    margin-bottom: 14px;
+  }
+
+  .caps-grid h3 {
+    font-size: 17px;
+    margin-bottom: 10px;
+  }
+
+  .caps-grid p {
+    font-size: 13.5px;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
+  .principles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(20px, 3vw, 40px);
+    margin-top: clamp(32px, 4vw, 52px);
+  }
+
+  .principle {
+    border-top: 1px solid var(--rule);
+    padding-top: 18px;
+  }
+
+  .approach-num {
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--fg-muted);
+    margin: 0 0 12px;
+  }
+
+  .principle h3 {
+    font-size: 18px;
+    margin: 0 0 8px;
+  }
+
+  .principle p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--fg-muted);
+  }
+
+  /* ---------------- faq ---------------- */
+  .faq-list {
+    border-top: 1px solid var(--rule);
+  }
+
+  .faq {
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding-block: clamp(16px, 2vw, 22px);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .faq summary::-webkit-details-marker { display: none; }
+
+  .faq summary h3 {
+    font-size: clamp(16px, 1.7vw, 20px);
+    margin: 0;
+    font-weight: 500;
+  }
+
+  .faq-toggle {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--fg-muted);
+    transition: transform 300ms var(--ease-out), color 300ms var(--ease-out);
+  }
+
+  .faq[open] .faq-toggle {
+    transform: rotate(45deg);
+    color: var(--theme-primary);
+    border-color: var(--theme-primary);
+  }
+
+  .faq p {
+    margin: 0 0 clamp(18px, 2vw, 24px);
+    font-size: 14px;
+    color: var(--fg-muted);
+    max-width: 82ch;
+  }
+
+  /* ---------------- contact ---------------- */
+  .contact-band {
+    border-top: 1px solid var(--rule);
+    margin-top: clamp(64px, 8vw, 110px);
+    padding-block: clamp(56px, 7vw, 100px);
+  }
+
+  .contact-inner {
+    max-width: 760px;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .contact-inner h2 {
+    font-size: clamp(30px, 4.4vw, 58px);
+    margin: 14px 0 0;
+  }
+
+  .contact-inner h2 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--fg-muted);
+  }
+
+  .contact-lede {
+    margin: 18px auto 0;
+    max-width: 58ch;
+    font-size: 14.5px;
+    color: var(--fg-muted);
+  }
+
+  .contact-cta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 28px 0 34px;
+  }
+
+  .contact-form { max-width: 640px; margin-inline: auto; }
+
+  .form-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    text-align: left;
+  }
+
+  .form-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  .form-fields .full { grid-column: 1 / -1; }
+
+  .form-fields input,
+  .form-fields textarea {
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--fg);
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 12px 14px;
+    resize: vertical;
+  }
+
+  .form-fields input:focus,
+  .form-fields textarea:focus {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: 1px;
+  }
+
+  .form-fields button { grid-column: 1 / -1; justify-self: center; }
+
+  /* The status live region must stay in the accessibility tree to be
+     announced, so it is never `hidden`; :empty keeps it from taking space. */
+  .form-status:empty { display: none; }
+
+  /* Honeypot: off-screen and untabbable for people, tempting for bots. */
+  .form-honey {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .form-status {
+    display: block;
+    width: 100%;
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 18px;
+    padding: 22px;
+    margin-top: 18px;
+    border: 1px solid var(--theme-primary);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--fg);
+  }
+
+  .contact-tags {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    list-style: none;
+    margin: 30px 0 0;
+    padding: 0;
+  }
+
+  .contact-tags .tag a { text-decoration: none; }
+
+  .contact-tags .tag:hover { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .contact-tags .tag a:hover { color: var(--bg); }
+
+  .contact-elsewhere {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 22px;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  /* ---------------- responsive ---------------- */
+  @media (max-width: 1000px) {
+    .caps-grid { grid-template-columns: repeat(2, 1fr); }
+    .record-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-portrait { max-width: 400px; }
+    .principles { grid-template-columns: 1fr; gap: 18px; }
+  }
+
+  @media (max-width: 760px) {
+    .explore-grid { grid-template-columns: 1fr; }
+    .form-fields { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 560px) {
+    .caps-grid { grid-template-columns: 1fr; }
+  }
+</style>
