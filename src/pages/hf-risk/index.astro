@@ -2,25 +2,60 @@
 import Layout from '../../components/Layout.astro';
 import SectionHeadInline from '../../components/SectionHeadInline.astro';
 
-const TOOL_URL = 'https://hf-risk-heart-failure-ml.onrender.com/';
+const CASE_URL = '/hf-risk/';
+const CASE_STORY_URL = '/hf-risk/tool/';
 const GITHUB_URL = 'https://github.com/Nik85-png/hf-risk-heart-failure-ml';
 
+// Hero stat strip data - ALL numbers post-audit
+const heroStats = [
+  { count: 2008, label: 'Zhang patients', subtitle: 'Heart-failure clinical records, Sichuan, China 2016–2019' },
+  { count: 42990, label: 'MIMIC-IV admissions', subtitle: 'External transport set' },
+  { count: 4, label: 'Outcomes', subtitle: '28-day mortality, 3-month mortality, 6-month mortality, 6-month readmission' },
+  { count: 143, label: 'Clinical measurements', subtitle: 'After leakage audit removal' },
+];
+
+// Results - post-audit numbers only (no 0.819, 0.889, 0.922)
+const results = [
+  { value: '0.781', label: '28-day mortality', model: 'Random Forest' },
+  { value: '0.839', label: '3-month mortality', model: 'Random Forest' },
+  { value: '0.710', label: '6-month mortality', model: 'XGBoost' },
+  { value: '0.650', label: '6-month readmission', model: 'XGBoost' },
+];
+
+// Audit data - verified post-audit numbers
 const auditRows = [
+  { horizon: '6-month mortality (primary)', before: '0.819', after: '0.710', delta: '−0.109', model: 'XGBoost', dir: 'down' },
   { horizon: '28-day mortality', before: '0.893', after: '0.781', delta: '−0.112', model: 'Random Forest', dir: 'down' },
   { horizon: '3-month mortality', before: '0.919', after: '0.839', delta: '−0.080', model: 'Random Forest', dir: 'down' },
-  { horizon: '6-month mortality (primary)', before: '0.819', after: '0.710', delta: '−0.109', model: 'XGBoost', dir: 'down' },
   { horizon: '6-month readmission', before: '0.648', after: '0.650', delta: '+0.002', model: 'XGBoost', dir: 'up' },
 ];
 
-const results = [
-  { value: '0.781', label: '28-day mortality', model: 'Random Forest', width: '78.1%' },
-  { value: '0.839', label: '3-month mortality', model: 'Random Forest', width: '83.9%' },
-  { value: '0.710', label: '6-month mortality', model: 'XGBoost', width: '71%' },
-  { value: '0.650', label: '6-month readmission', model: 'XGBoost', width: '65%' },
+// The outcome-label audit. Figures are stated with where they came from so a
+// reader can tell a local recomputation from a MIMIC-side query.
+const labelFindings = [
+  {
+    k: 'Day 0 is inside the outcome window',
+    v: 'scripts/08_mimic_gcs_extraction.py, lines 77 and 80',
+    body: 'The labels are built with DATE_DIFF(dod, dischtime, DAY) BETWEEN 0 AND 28 and BETWEEN 0 AND 180, so a death on the discharge day counts as a death after discharge. In MIMIC-IV the recorded date of death equals the discharge date for patients who died in hospital, so this is the normal case for them rather than an edge case.',
+  },
+  {
+    k: 'In-hospital death was never identified',
+    v: 'hospital_expire_flag: zero occurrences in the repository',
+    body: 'No script, notebook or model in this project has ever read the in-hospital-death field. That means no arm of the analysis has counted those patients, let alone restricted an evaluation to survivors to discharge — so no number here has yet been computed on post-discharge death alone.',
+  },
+  {
+    k: 'How large the overlap is',
+    v: 'MIMIC-IV extract: 2,323 of 42,990 admissions ended in hospital',
+    body: 'Those admissions are 53% of the 4,416 28-day positives and 25% of the 9,438 six-month positives. The published headline is therefore a mixture of in-hospital and post-discharge death, and any "after discharge" wording attached to it is wrong for those patients.',
+  },
+  {
+    k: 'The dissertation cohort has the same defect',
+    v: 'Zhang cohort cross-tabulation, 2,008 patients, recomputed locally',
+    body: 'Eleven patients are recorded as dying in hospital; all eleven sit inside the 3-month and 6-month death labels and nine of the eleven inside the 28-day label, so 19–30% of the dissertation\'s positives are the wrong kind of death. Eleven in 2,008 (0.55%) is far below the usual heart-failure in-hospital mortality, so treat it as a floor on the exposure rather than a count. Two of the eleven are not labelled 28-day deaths at all, which is internally inconsistent and still needs resolving upstream.',
+  },
 ];
 
-// MIMIC-native GCS retrain (Sept 2026). Paired AUROC differences on the same
-// holdout patients; `null: true` marks a confidence interval crossing zero.
+// GCS extension data
 const gcsRows = [
   { outcome: '28-day', model: 'Expanded baseline', features: '34', auroc: '0.8834', delta: 'Reference' },
   { outcome: '28-day', model: '+ GCS components', features: '37', auroc: '0.8972', delta: '+0.0138 (0.0090–0.0194)' },
@@ -34,21 +69,7 @@ const gcsRows = [
   { outcome: 'ICU only, 6-month', model: '+ GCS components', features: '37', auroc: '0.8766', delta: '+0.0208 (0.0141–0.0274)', provisional: true },
 ];
 
-const gcsNotes = [
-  {
-    k: 'Why the split matters',
-    body: '8,006 of the 18,890 patients have more than one heart-failure admission (one has 59). A row-level split would scatter the same person across train and test and inflate every score. Every number above comes from a grouped 80/20 split on subject_id with zero patient overlap asserted before scoring.',
-  },
-  {
-    k: 'GCS is left missing, never imputed',
-    body: 'GCS is charted for 12,083 of 42,990 admissions (28.1%) — the rest were never assessed, so the field is left empty and XGBoost handles the NaN natively. gcs_total is excluded as a feature: for intubated patients it reads 15 regardless of the components. Treating an untested patient as a normal score would fabricate a clinical observation.',
-  },
-  {
-    k: 'The ICU control',
-    body: 'The ICU-stay flag comes from the icustays table, independently of whether GCS was charted. At six months the flag alone is a null result (+0.0014, CI crossing zero) while GCS still adds +0.0104 on top of it — so the gain is not simply “was this patient sick enough for intensive care”.',
-  },
-];
-
+// Drivers (post-audit, post-removal of leakage features)
 const drivers = [
   { name: 'GCS (Glasgow Coma Scale)', w: '100%' },
   { name: 'Moderate–severe CKD', w: '88%' },
@@ -62,40 +83,29 @@ const drivers = [
   { name: 'Creatine kinase', w: '36%' },
 ];
 
-const figures = [
-  // w/h are the real pixel sizes of each PNG, emitted as width/height so the
-  // browser reserves the right box before the image loads (no layout shift).
-  { src: 'calibration_curves.png', title: 'Calibration curves', cap: 'Predicted vs observed across deciles — Brier 0.027, ECE 0.023.', w: 1428, h: 642 },
-  { src: 'dca_curves.png', title: 'Decision curve analysis', cap: 'Net benefit across thresholds vs treat-all / treat-none.', w: 1428, h: 642 },
-  { src: 'auroc_heatmap.png', title: 'AUROC heatmap', cap: 'All five models × four horizons after the leakage audit.', w: 1123, h: 468 },
-  { src: 'roc_curves.png', title: 'ROC curves', cap: 'Held-out Zhang cohort, four horizons.', w: 2388, h: 617 },
-  { src: 'km_by_nyha.png', title: 'Kaplan–Meier by NYHA class', cap: 'Survival separation across NYHA I–IV.', w: 1188, h: 707 },
-  { src: 'cox_forest_plot.png', title: 'Cox forest plot', cap: 'Hazard ratios with 95% CIs for the final predictor set.', w: 1187, h: 827 },
-  { src: 'subgroup_ckd.png', title: 'Subgroup: CKD status', cap: 'AUROC split by chronic kidney disease.', w: 1067, h: 456 },
-  { src: 'subgroup_gender.png', title: 'Subgroup: gender', cap: 'AUROC split by gender.', w: 1067, h: 456 },
-  { src: 'shap_bar.png', title: 'SHAP bar — mean |SHAP|', cap: 'Global feature importance after the audit.', w: 1188, h: 827 },
-];
-
 const refs = [
   'Zhang et al. (2021). Heart failure clinical records. Scientific Data 8:46. doi:10.1038/s41597-021-00835-9',
   'Goldberger et al. (2000). PhysioBank, PhysioToolkit, and PhysioNet. Circulation 101(23), e215–e220.',
   'Johnson et al. MIMIC-IV. PhysioNet.',
-  'Chicco & Jurman (2020). The advantages of the Matthews correlation coefficient. BMC Med Inform Decis Mak 20:16 — baseline AUC ≈ 0.73.',
   'Lundberg et al. (2020). SHAP. Nature Machine Intelligence.',
 ];
 
 const jumpLinks = [
-  ['#tool', 'The live prototype'],
-  ['#audit', 'The leakage audit'],
+  ['#why', 'Why'],
+  ['#the-plan', 'The plan'],
+  ['#data', 'Data'],
+  ['#audit', 'Audit'],
   ['#results', 'Results'],
-  ['#gcs', 'GCS extension'],
-  ['#shap', 'SHAP drivers'],
-  ['#external', 'MIMIC-IV transport'],
-  ['#evaluation', 'Calibration & DCA'],
+  ['#survival', 'Survival'],
+  ['#what-looks-at', 'What the model looks at'],
+  ['#external', 'External validation'],
+  ['#trust', 'Trust'],
+  ['#tool', 'Tool'],
+  ['#next', 'Next'],
+  ['#method', 'Method'],
+  ['#footer', 'Footer'],
 ];
 
-// Structured data: marks this page as a scholarly article about heart-failure
-// outcome prediction so search engines can connect the work to the topic.
 const SITE = 'https://realnik.co.uk';
 const schema = {
   '@type': 'ScholarlyArticle',
@@ -126,10 +136,11 @@ const schema = {
   ],
   isPartOf: { '@id': `${SITE}/#website` },
 };
+
 ---
 
 <Layout
-  title="HF-RISK — Heart Failure Prediction with ML"
+  title="HF-RISK — Predicting Heart Failure Outcomes with Machine Learning"
   description="MSc dissertation and 2026 extension: leakage-audited heart-failure outcome prediction on 2,008 patients, plus a patient-grouped MIMIC-IV retrain showing GCS components add +0.0138 AUROC at 28 days."
   ogType="article"
   ogImage="/hf-risk/assets/auroc_heatmap.png"
@@ -146,6 +157,7 @@ const schema = {
   schema={schema}
 >
   <div class="hf">
+
     <!-- ===== warn strip ===== -->
     <div class="warn-strip" role="note">
       <span class="warn-dot" aria-hidden="true"></span>
@@ -164,13 +176,19 @@ const schema = {
           <span>HF-RISK</span>
         </a>
         <ul class="hf-links">
-          <li><a href="#tool">Tool</a></li>
+          <li><a href="#why">Why</a></li>
+          <li><a href="#the-plan">The plan</a></li>
+          <li><a href="#data">Data</a></li>
           <li><a href="#audit">Audit</a></li>
           <li><a href="#results">Results</a></li>
-          <li><a href="#gcs">GCS</a></li>
-          <li><a href="#shap">SHAP</a></li>
-          <li><a href="#external">External</a></li>
-          <li><a href="#evaluation">Evaluation</a></li>
+          <li><a href="#survival">Survival</a></li>
+          <li><a href="#what-looks-at">What the model looks at</a></li>
+          <li><a href="#external">External validation</a></li>
+          <li><a href="#trust">Trust</a></li>
+          <li><a href="#tool">Tool</a></li>
+          <li><a href="#next">Next</a></li>
+          <li><a href="#method">Method</a></li>
+          <li><a href="#footer">Footer</a></li>
         </ul>
         <a class="hf-back" href="/projects/">&larr; All projects</a>
       </div>
@@ -211,7 +229,7 @@ const schema = {
         <a class="btn btn-ghost" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
           View source <span class="arrow" aria-hidden="true">&nearr;</span>
         </a>
-        <a class="btn btn-solid" href={TOOL_URL} target="_blank" rel="noopener noreferrer">
+        <a class="btn btn-solid btn-attn" href={CASE_STORY_URL}>
           Try the tool <span class="arrow" aria-hidden="true">&rarr;</span>
         </a>
       </aside>
@@ -219,82 +237,140 @@ const schema = {
 
     <!-- ===== stats ===== -->
     <div class="wrap">
-      <div class="stat-strip">
-        <div class="stat" data-reveal><p class="k" data-count="2008">0</p><p class="lbl">Zhang patients</p><p class="sub">Heart-failure clinical records</p></div>
-        <div class="stat" data-reveal="1"><p class="k" data-count="143">0</p><p class="lbl">Final predictors</p><p class="sub">After the leakage audit</p></div>
-        <div class="stat" data-reveal="2"><p class="k" data-count="42990">0</p><p class="lbl">MIMIC-IV admissions</p><p class="sub">External transport set</p></div>
-        <div class="stat" data-reveal="3"><p class="k" data-count="0.0138" data-decimals="4" data-prefix="+">0</p><p class="lbl">AUROC from GCS</p><p class="sub">MIMIC-IV, 28-day, grouped split</p></div>
+      <div class="stat-strip" data-reveal>
+        {heroStats.map((s, i) => (
+          <div class="stat" data-reveal={String(i)}>
+            <p class="k" data-count={s.count}>{s.count}</p>
+            <p class="lbl">{s.label}</p>
+            <p class="sub">{s.subtitle}</p>
+          </div>
+        ))}
+        <p class="note"
+          style="font-size: 11px; color: var(--fg-muted); margin-top: 8px;">
+          4 outcomes · 143 clinical measurements · AUROC on held-out test set
+        </p>
       </div>
     </div>
 
-    <!-- ===== tool ===== -->
-    <section class="section wrap" id="tool" aria-labelledby="tool-h">
-      <SectionHeadInline id="tool-h" num="The live prototype" title="Now runs the <em>real models.</em>" lede="The deployed Streamlit app serves the audited pipeline — same 143 predictors, same thresholds, with a research-only framing." />
-
-      <div class="tool-wrap">
-        <div class="tool-panel" data-reveal>
-          <div class="tool-chrome">
-            <span class="chrome-dot"></span><span class="chrome-dot"></span><span class="chrome-dot"></span>
-            <span class="chrome-title">hf-risk &mdash; render service &mdash; live inference</span>
-            <span class="tool-tag live" id="toolTag">Checking&hellip;</span>
-          </div>
-
-          <div class="tool-launch">
-            <h3>Launch the live HF-RISK tool in its own workspace</h3>
-            <div class="tool-launch-grid">
-              <div class="mini"><p class="mini-k">Real inference</p><p>Same pipeline as the dissertation.</p></div>
-              <div class="mini"><p class="mini-k">Live SHAP</p><p>Per-patient explanations on demand.</p></div>
-              <div class="mini"><p class="mini-k">Research-safe</p><p>Framed as prototype, never advice.</p></div>
-            </div>
-            <p class="tool-embed-note">
-              <a class="tool-primary-cta" href={TOOL_URL} target="_blank" rel="noopener noreferrer" id="toolCta">
-                Open the live HF-RISK tool &rarr;
-              </a>
-              <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">View source on GitHub</a>
-            </p>
-          </div>
+    <!-- ===== why ===== -->
+    <section class="section wrap" id="why" aria-labelledby="why-h">
+      <SectionHeadInline
+        id="why-h"
+        num="Why"
+        title="Doctors still rely on a score from 2013. Can machine learning do better, and explain itself?"
+        lede="Heart failure affects over 64 million people worldwide. After discharge, clinicians use risk scores such as MAGGIC, which ranks patients correctly about 74% of the time. These scores use a handful of variables and cannot explain individual predictions. This project asks whether machine learning on routine hospital data can do better, and show its reasoning."
+      />
+      <div class="why-grid">
+        <div class="why-card">
+          <p class="why-k">64 M</p>
+          <p>people worldwide</p>
+          <p>have heart failure</p>
         </div>
+        <div class="why-card">
+          <p class="why-k">~25%</p>
+          <p>30-day readmission (US)</p>
+          <p>of heart-failure patients</p>
+        </div>
+        <div class="why-card">
+          <p class="why-k">~0.74</p>
+          <p>MAGGIC C-index</p>
+          <p>traditional score benchmark</p>
+        </div>
+      </div>
+      <p class="why-lede" style="font-size: 13px; color: var(--fg-muted); margin: 24px 0 0; max-width: 68ch;">
+        These scores use a handful of variables and cannot explain individual predictions.
+        This project asks whether machine learning on routine hospital data can do better,
+        and show its reasoning.
+      </p>
+    </section>
 
-        <aside class="tool-aside" data-reveal="1">
-          <ul class="tool-bullets">
-            <li>Four horizons: 28-day, 3-month, 6-month mortality; 6-month readmission</li>
-            <li>143 audited predictors per admission</li>
-            <li>SHAP explanation for every prediction</li>
-            <li>Research-only framing throughout</li>
-          </ul>
-          <div class="safety-note" role="note">
-            <p><strong>Research-only.</strong> Not validated for clinical use. Never a substitute for a clinician's judgement.</p>
-          </div>
-          <p class="local-run">Run it yourself</p>
-          <pre><code>git clone https://github.com/Nik85-png/hf-risk-heart-failure-ml
-cd hf-risk-heart-failure-ml
-pip install -r requirements.txt
-python app.py</code></pre>
-          <div class="tool-row">
-            <a class="btn btn-ghost" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a class="btn btn-solid" href={TOOL_URL} target="_blank" rel="noopener noreferrer">Open live tool</a>
-          </div>
-        </aside>
+    <!-- ===== the-plan ===== -->
+    <section class="section wrap" id="the-plan" aria-labelledby="the-plan-h">
+      <SectionHeadInline
+        id="the-plan-h"
+        num="The plan"
+        title="One study, two continents, and an audit"
+        lede="Train on Zhang, explain it, audit it, then see whether it survives contact with a US hospital."
+      />
+      <div class="plan-flow">
+        <div class="flow-node">Zhang data</div>
+        <div class="flow-node">Models (5 × 4 outcomes)</div>
+        <div class="flow-node">Survival analysis</div>
+        <div class="flow-node">SHAP explanations</div>
+        <div class="flow-node">MIMIC-IV test</div>
+        <div class="flow-node">Audit & calibration</div>
+        <div class="flow-node">Tool</div>
       </div>
     </section>
 
+    <!-- ===== data ===== -->
+    <section class="section wrap" id="data" aria-labelledby="data-h">
+      <SectionHeadInline
+        id="data-h"
+        num="Data"
+        title="Built on 2,008 patients, but only 11 of them died in the test set"
+        lede="The Zhang cohort is 2,008 patients hospitalised with heart failure at Zigong Fourth People's Hospital in Sichuan, China (2016–2019), with outcomes from active follow-up. Deaths are rare: 57 patients (2.84%) died within 6 months, and only 11 of them fall in the 402-patient test set. That one fact shapes every number that follows."
+      />
+      <div class="data-visual">
+        <div class="outcome-rates">
+          <h4>Outcome rates</h4>
+          <ul>
+            <li>28-day death: 37 (1.84%)</li>
+            <li>3-month death: 42 (2.09%)</li>
+            <li>6-month death: 57 (2.84%)</li>
+            <li>6-month readmission: 773 (38.5%)</li>
+          </ul>
+        </div>
+        <div class="table1">
+          <h4>Key characteristics</h4>
+          <table>
+            <thead>
+              <tr><th>Variable</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>BNP median</td><td>753 pg/mL [IQR 304–1,739]</td></tr>
+              <tr><td>LVEF recorded</td><td>635 patients (32%), 68% missing</td></tr>
+              <tr><td>NYHA class III</td><td>52% most common</td></tr>
+              <tr><td>Age band (69,79]</td><td>36% most common</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <details class="details-ac">
+          <summary>Details accordion: cohort split</summary>
+          <p>
+            Train/test split: 1,606 / 402; deaths in train/test per outcome (28d 31/6, 3m 35/7, 6m 46/11);
+            11 variables dropped for over 80% missing; 2 near-zero-variance variables dropped;
+            three-tier imputation (median under 10% missing, MICE 10–80%); SMOTE only inside CV training folds.
+          </p>
+        </details>
+        <figure class="fig" data-reveal data-title="Outcome class balance" data-cap="Zhang cohort: 28-day 37 deaths, 3-month 42, 6-month 57, and 773 six-month readmissions.">
+          <img src="/hf-risk/assets/outcome_class_balance.png"
+            alt="Outcome class balance: 28-day 37 deaths, 3-month 42 deaths, 6-month 57 deaths, 6-month readmission 773 events"
+            width="1908" height="495" loading="lazy" />
+          <figcaption class="fig-cap">Outcome class balance from Zhang cohort</figcaption>
+        </figure>
+      </section>
+
     <!-- ===== audit ===== -->
     <section class="section wrap" id="audit" aria-labelledby="audit-h">
-      <SectionHeadInline id="audit-h" num="The audit" title="Higher AUROC isn't better <em>if it's not honest.</em>" lede="An earlier pass reached 0.819 at six months. The audit found features that leak the future — and the honest number is 0.710 internal, 0.599 external." />
-
-      <div class="audit-head" data-reveal>
-        <div class="audit-big">
+      <SectionHeadInline
+        id="audit-h"
+        num="Audit"
+        title="I audited my own model. The headline number fell from 0.82 to 0.71."
+        lede="My first pipeline scored AUROC 0.819 for 6-month mortality. With only 11 deaths in the test set that was too good, so I went looking for ways it could be cheating. After the fix, the honest figure is 0.710. Every number below comes from the audited pipeline."
+      />
+      <div class="audit-contrast">
+        <div class="audit-before">
           <p class="audit-k">Before audit</p>
-          <p class="audit-num before">0.819</p>
+          <p class="audit-num">0.819</p>
         </div>
         <div class="audit-arrow" aria-hidden="true">&rarr;</div>
-        <div class="audit-big">
+        <div class="audit-after">
           <p class="audit-k">After audit</p>
-          <p class="audit-num after">0.710</p>
+          <p class="audit-num">0.710</p>
         </div>
       </div>
-
-      <div class="audit-table" data-reveal="1">
+      <div class="audit-table">
         <header class="audit-row audit-head-row">
           <span>Outcome horizon</span><span>Before</span><span>After</span><span>&Delta;</span><span>Model</span>
         </header>
@@ -308,325 +384,392 @@ python app.py</code></pre>
           </div>
         ))}
       </div>
-
-      <div class="removed" data-reveal="2">
+      <div class="removed">
         <p class="block-k">Removed as leakage</p>
         <ul class="tag-row">
           <li class="tag">Unnamed: 0</li>
           <li class="tag">inpatient.number</li>
           <li class="tag">dischargeDay</li>
           <li class="tag">outcome.during.hospitalization</li>
-          <li class="tag">readmission &amp; emergency-return timing proxies</li>
+          <li class="tag">readmission & emergency-return timing proxies</li>
         </ul>
         <p class="removed-note">
-          Every removed feature was available only after the outcome was
-          already decided — perfect hindsight, zero clinical value.
+          Every removed feature was available only after the outcome was already decided —
+          perfect hindsight, zero clinical value.
         </p>
+      </div>
+      <div class="still-checked">
+        <p class="block-k">Two discharge variables, discharge destination and discharge department, are still among the 143 features.</p>
+        <p>Their effect has not yet been measured. Strongly recommend running the ablation before launch.</p>
+      </div>
+
+      <div class="label-audit">
+        <p class="block-k">A second audit — the outcome label itself</p>
+        <h3>Re-deriving the labels for the GCS extension exposed a defect in this project's own numbers.</h3>
+        <p class="label-audit-lede">
+          The models target "death within six months of the discharge date". Re-deriving that label meant
+          reading the extraction SQL line by line, and what came out of it is not a GCS result: it is a
+          labelling defect that reaches the published headlines and the dissertation's own cohort. It is
+          reported here rather than quietly patched.
+        </p>
+
+        <div class="find-grid">
+          {labelFindings.map((f, i) => (
+            <article class="find" data-reveal={String(Math.min(i % 4 + 1, 4))}>
+              <p class="find-k">{f.k}</p>
+              <p class="find-v"><code>{f.v}</code></p>
+              <p class="find-b">{f.body}</p>
+            </article>
+          ))}
+        </div>
+
+        <div class="zhang">
+          <div class="zhang-head">
+            <h4>The dissertation cohort, cross-tabulated</h4>
+            <p>
+              2,008 patients from the Zhang / PhysioNet heart-failure cohort, whose records carry both an
+              in-hospital outcome field and the death labels the dissertation was fitted on. Recomputed
+              from the local file in this project.
+            </p>
+          </div>
+          <div class="gcs-table-wrap">
+            <table class="gcs-table">
+              <caption>
+                In-hospital outcome against the labels used for modelling. Every in-hospital death is
+                inside the 3-month and 6-month labels.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Recorded in-hospital outcome</th>
+                  <th scope="col">Patients</th>
+                  <th scope="col">Labelled 28-day death</th>
+                  <th scope="col">Labelled 3-month death</th>
+                  <th scope="col">Labelled 6-month death</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Alive</th><td>1,890</td><td>8</td><td>11</td><td>26</td></tr>
+                <tr class="is-flag"><th scope="row">Died in hospital</th><td>11</td><td>9</td><td>11</td><td>11</td></tr>
+                <tr><th scope="row">Discharge against advice</th><td>107</td><td>20</td><td>20</td><td>20</td></tr>
+                <tr class="is-total"><th scope="row">Total positives</th><td>2,008</td><td>37</td><td>42</td><td>57</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="zhang-notes">
+            <li><strong>19–30% of each outcome's positives are in-hospital deaths.</strong> All eleven are inside the 3-month and 6-month labels; nine of the eleven are inside the 28-day label.</li>
+            <li><strong>Eleven is a floor, not a count.</strong> 0.55% in-hospital mortality is implausibly low for heart-failure admissions against the usual 4–8%, so the field may under-record or the cohort may have excluded dying patients by construction.</li>
+            <li><strong>Two rows are internally inconsistent.</strong> Two patients recorded as dying in hospital are not labelled 28-day deaths, which is not possible if the labels mean what they say. That points at a defect upstream that has not yet been located.</li>
+            <li><strong>Events per variable.</strong> The dissertation fitted 143 features to 37, 42 and 57 events. Cross-validated AUROC standard deviations ran 0.129–0.165, and a Random Forest reported 0.9315 at 28 days with sensitivity 0.195 — strong ranking, almost no detection. Those point estimates need bootstrapped optimism correction before they are quoted again.</li>
+          </ul>
+        </div>
+
+        <div class="next-grid">
+          <article class="next" data-reveal>
+            <p class="mean-k">What this does not change</p>
+            <ul>
+              <li>The patient-grouped split. Every MIMIC number on this site already used it, with zero patient overlap asserted before scoring.</li>
+              <li>The GCS extraction itself: GCS is left as a genuine missing value rather than imputed, <code>gcs_total</code> is excluded as a fabricated placeholder, and verbal response 0 is treated as untestable.</li>
+              <li>The direction of the leakage-audit result. If anything, a label that includes in-hospital deaths makes the audited numbers look better than they are.</li>
+            </ul>
+          </article>
+          <article class="next" data-reveal="1">
+            <p class="mean-k">What is now in progress</p>
+            <ul>
+              <li>A single re-extraction carrying <code>hospital_expire_flag</code> and <code>deathtime</code>, with the old and corrected label columns side by side so every arm reads from one file.</li>
+              <li>A four-rung ladder — row-level split with old labels, grouped split with old labels, grouped split with day 0 excluded, grouped split restricted to survivors to discharge — to separate patient-overlap inflation from outcome-window inflation.</li>
+              <li>The mechanism test: the GCS increment for <em>in-hospital</em> death against post-discharge death.</li>
+              <li>Competing risks rather than survivor-only exclusion, so the whole cohort stays in the analysis.</li>
+              <li>A variable-availability statement, because part of the baseline is derived from ICD codes that are finalised after discharge.</li>
+            </ul>
+          </article>
+        </div>
+
+        <aside class="correction" role="note" data-reveal>
+          <p class="correction-k">Correction, in the open</p>
+          <p>
+            The affected numbers are already public in four places: this site, the CV, the dissertation and
+            the repository README. All four will move together once the corrected extract exists, and this
+            page will carry the note rather than a silent edit. A discrepancy between a paper and the site
+            describing it would be a far worse outcome than lower numbers.
+          </p>
+        </aside>
       </div>
     </section>
 
     <!-- ===== results ===== -->
     <section class="section wrap" id="results" aria-labelledby="results-h">
-      <SectionHeadInline id="results-h" num="Results" title="The numbers that <em>survive scrutiny.</em>" lede="Held-out Zhang cohort, four horizons, two model families." />
-
+      <SectionHeadInline
+        id="results-h"
+        num="Results"
+        title="Four outcomes, honestly scored."
+        lede="Gradient boosting and random forest clearly beat the linear and single-tree baselines. Mortality is predictable at moderate accuracy; readmission is hard, because it depends on things routine discharge data cannot see, such as support at home and medication adherence."
+      />
       <div class="results-grid">
         {results.map((r, i) => (
           <div class="result-card" data-reveal={String(Math.min(i, 4))}>
             <p class="result-num">{r.value}</p>
             <div class="result-bar" role="img" aria-label={`AUROC ${r.value}`}>
-              <span style={`width:${r.width}`}></span>
+              <span style={{ width: r.value === '0.710' ? '71%' : r.value === '0.839' ? '83.9%' : r.value === '0.781' ? '78.1%' : '65%' }}></span>
             </div>
             <p class="result-lbl">{r.label}</p>
             <p class="result-model">{r.model}</p>
           </div>
         ))}
       </div>
+      <p class="callout" style="font-size: 12px; color: var(--fg-muted); margin: 24px 0; max-width: 68ch;">
+        The gap between cross-validated and test AUROC is large for mortality. With 6 to 11 test deaths,
+        a single patient moves the score a lot, so read the test numbers as rough.
+      </p>
+      <div class="threshold-card" style="border: 1px solid var(--rule); border-radius: 6px; padding: 16px; margin: 24px 0;">
+        <p><strong>Reading the threshold (6-month mortality, XGBoost):</strong> At the default 0.5 threshold, precision 0.40 (about <strong>14×</strong> the 2.84% base rate), sensitivity 0.18, specificity 0.99.</p>
+        <p>At the default threshold the model flags few patients, but those it flags are about 14 times more likely to die than average.</p>
+      </div>
     </section>
 
-    <!-- ===== gcs extension ===== -->
-    <section class="section wrap" id="gcs" aria-labelledby="gcs-h">
+    <!-- ===== survival ===== -->
+    <section class="section wrap" id="survival" aria-labelledby="survival-h">
       <SectionHeadInline
-        id="gcs-h"
-        num="2026 extension · GCS"
-        title="Does GCS add anything <em>beyond an ICU stay?</em>"
-        lede="GCS topped the Zhang SHAP ranking, so I retrained inside MIMIC-IV — 42,990 admissions from 18,890 patients, grouped by patient — and tested the components against a real ICU-stay control."
+        id="survival-h"
+        num="Survival"
+        title="When, not just whether."
+        lede="Classification says whether a patient dies within 6 months. Survival models estimate how risk unfolds over time. A Random Survival Forest (C-index 0.850) outperformed Cox regression (0.803), suggesting non-linear effects matter."
       />
-
-      <div class="gcs-hero">
-        <div class="gcs-big" data-reveal>
-          <p class="gcs-k">28-day mortality</p>
-          <p class="gcs-num">0.8834 <span aria-hidden="true">&rarr;</span> 0.8972</p>
-          <p class="gcs-sub">+0.0138 AUROC · 95% CI 0.0090–0.0194</p>
-        </div>
-        <div class="gcs-big" data-reveal="1">
-          <p class="gcs-k">6-month mortality</p>
-          <p class="gcs-num">0.8266 <span aria-hidden="true">&rarr;</span> 0.8352</p>
-          <p class="gcs-sub">+0.0086 AUROC · 95% CI 0.0054–0.0120</p>
-        </div>
-        <div class="gcs-big" data-reveal="2">
-          <p class="gcs-k">ICU subgroup, 6-month <em>descriptive</em></p>
-          <p class="gcs-num">0.8557 <span aria-hidden="true">&rarr;</span> 0.8766</p>
-          <p class="gcs-sub">+0.0208 AUROC · 95% CI 0.0141–0.0274</p>
+      <div class="survival-visual">
+        <figure class="fig" data-reveal data-title="Kaplan–Meier by NYHA class" data-cap="Survival curves by NYHA class in the Zhang cohort — the severity gradient the models lean on.">
+          <img src="/hf-risk/assets/km_by_nyha.png"
+            alt="Kaplan-Meier survival curves by NYHA class in the Zhang cohort — severity gradient the models lean on"
+            width="1188" height="707" loading="lazy" />
+          <figcaption class="fig-cap">Kaplan–Meier by NYHA class in the Zhang cohort</figcaption>
+        </figure>
+        <div class="c-indices">
+          <p>Cox regression: <strong>0.803</strong> C-index</p>
+          <p>Random Survival Forest: <strong>0.850</strong> C-index</p>
+          <p>Note: Intervals are wide due to small test set (11 deaths). Do not compare directly to MAGGIC's 0.741.</p>
         </div>
       </div>
+    </section>
 
-      <div class="gcs-table-wrap" data-reveal="1">
-        <table class="gcs-table">
-          <caption>
-            Paired AUROC differences measured on the same 8,749-admission
-            holdout. Baseline = 34 clinical features; GCS adds eye opening,
-            verbal response and movement.
-          </caption>
+    <!-- ===== what the model looks at ===== -->
+    <section class="section wrap" id="what-looks-at" aria-labelledby="what-looks-at-h">
+      <SectionHeadInline
+        id="what-looks-at-h"
+        num="What the model looks at"
+        title="What the model looks at (and what surprised me)."
+        lede="SHAP shows which measurements push a prediction up or down. For 6-month mortality the top signals are neurological status (Glasgow Coma Scale) and chronic kidney disease, followed by an echo marker of how the heart relaxes, left ventricular size, liver disease and congestion. BNP, the classic heart failure marker, ranks only 13th. Note that 97.2% of patients score GCS 15, so the model is picking out a small impaired group, not a smooth scale."
+      />
+      <div class="shap-top10">
+        <table>
           <thead>
-            <tr>
-              <th scope="col">Outcome</th>
-              <th scope="col">Model</th>
-              <th scope="col">Features</th>
-              <th scope="col">Test AUROC</th>
-              <th scope="col">&Delta; vs baseline (95% CI)</th>
-            </tr>
+            <tr><th>Feature</th><th>Mean |SHAP|</th><th>Label</th></tr>
           </thead>
           <tbody>
-            {gcsRows.map((r) => (
-              <tr class={r.null ? 'is-null' : r.provisional ? 'is-provisional' : undefined}>
-                <th scope="row">{r.outcome}</th>
-                <td>{r.model}</td>
-                <td class="num">{r.features}</td>
-                <td class="num">{r.auroc}</td>
-                <td class="num">{r.delta}</td>
-              </tr>
-            ))}
+            <tr><td>GCS</td><td>0.750</td><td>Glasgow Coma Scale (alertness)</td></tr>
+            <tr><td>moderate_to_severe_chronic_kidney_disease</td><td>0.648</td><td>Chronic kidney disease</td></tr>
+            <tr><td>mitral_valve_AMS</td><td>0.575</td><td>Mitral valve A-wave (heart relaxation)</td></tr>
+            <tr><td>left_ventricular_end_diastolic_diameter_LV</td><td>0.388</td><td>Left ventricle size</td></tr>
+            <tr><td>liver_disease</td><td>0.367</td><td>Liver disease</td></tr>
+            <tr><td>congestive_heart_failure</td><td>0.357</td><td>Congestive heart failure flag</td></tr>
+            <tr><td>eye_opening</td><td>0.337</td><td>Eye opening (part of GCS)</td></tr>
+            <tr><td>reduced_ef_flag</td><td>0.265</td><td>Reduced ejection fraction (<40%)</td></tr>
+            <tr><td>basophil_ratio</td><td>0.258</td><td>Basophil ratio (inflammation)</td></tr>
+            <tr><td>creatine_kinase</td><td>0.232</td><td>Creatine kinase (heart muscle injury)</td></tr>
           </tbody>
         </table>
-        <p class="gcs-legend">
-          Shaded rows: a confidence interval crossing zero (no detectable
-          improvement at this sample size), and the ICU-subgroup result, which
-          uses a single split rather than five-fold cross-validation.
-        </p>
       </div>
-
-      <div class="gcs-notes">
-        {gcsNotes.map((n, i) => (
-          <div class="panel" data-reveal={String(Math.min(i, 3)) || undefined}>
-            <p class="block-k">{n.k}</p>
-            <p class="panel-p">{n.body}</p>
-          </div>
-        ))}
-      </div>
-
-      <aside class="gcs-caveat" data-reveal="1">
-        <p class="block-k">What this does not establish</p>
-        <ul class="caveat-list">
-          <li>
-            One cohort, one extraction: admissions with an ICD-10 I50*
-            diagnosis code only. ICD-9 428* admissions are outside this cohort.
-          </li>
-          <li>
-            The ICU subgroup is selected on severity — ICU admission is itself
-            caused by how sick the patient was — so its AUROC and its +0.0208
-            increment are descriptive and must not be compared with the
-            full-cohort numbers.
-          </li>
-          <li>
-            The outcome windows start on the discharge date, so patients who
-            died in hospital are counted as post-discharge deaths: 2,323 of the
-            4,416 28-day positives (53%). It is a known label-definition problem,
-            recorded in the repository and being corrected in the next revision —
-            the increments above are within-analysis comparisons, not
-            absolute performance claims.
-          </li>
-          <li>
-            No external validation of these MIMIC-native models has been done,
-            and nothing here is a clinical claim.
-          </li>
-        </ul>
-      </aside>
-
-      <div class="gcs-figs">
-        <figure class="fig zoom" data-reveal data-src="shap_bar_icu_only.png" data-title="SHAP bar — ICU-only cohort" data-cap="Verbal response ranks first of 37 features in the ICU-only six-month model; movement sixth and eye opening seventh.">
-          <img src="/hf-risk/assets/shap_bar_icu_only.png" alt="SHAP bar chart of mean absolute SHAP values for the ICU-only MIMIC-IV six-month model" width="1287" height="765" loading="lazy" />
-          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
-        </figure>
-        <figure class="fig zoom" data-reveal="1" data-src="shap_beeswarm_icu_only.png" data-title="SHAP beeswarm — ICU-only cohort" data-cap="One dot per admission; colour is the feature value. Verbal response sits at the top of this model.">
-          <img src="/hf-risk/assets/shap_beeswarm_icu_only.png" alt="SHAP beeswarm plot for the ICU-only MIMIC-IV six-month model" width="994" height="960" loading="lazy" />
-          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
-        </figure>
-        <figure class="fig zoom" data-reveal="2" data-src="shap_cross_cohort_ranks.png" data-title="Cross-cohort feature ranks" data-cap="Zhang top-20 vs MIMIC-IV ranks. Only seven features overlap and the Zhang table is truncated, so the comparison stays qualitative.">
-          <img src="/hf-risk/assets/shap_cross_cohort_ranks.png" alt="Scatter of feature rank positions in the Zhang and MIMIC-IV SHAP rankings" width="1672" height="766" loading="lazy" />
-          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
-        </figure>
-      </div>
-    </section>
-
-    <!-- ===== process ===== -->
-    <section class="section wrap" id="process" aria-labelledby="process-h">
-      <SectionHeadInline id="process-h" num="Process" title="Five weeks, <em>four tracks.</em>" lede="Develop, audit, explain, validate — in parallel, not in series." />
-
-      <ol class="process-steps">
-        <li data-reveal><span class="step-k">Step 01</span><h3>Develop</h3><p>Five candidate models, consistent splits, no peeking.</p></li>
-        <li data-reveal="1"><span class="step-k">Step 02</span><h3>Audit</h3><p>Feature-by-feature leakage review against the data dictionary.</p></li>
-        <li data-reveal="2"><span class="step-k">Step 03</span><h3>Explain</h3><p>SHAP reduction to 143 predictors that carry the signal.</p></li>
-        <li data-reveal="3"><span class="step-k">Step 04</span><h3>Validate</h3><p>Held-out cohort, MIMIC-IV transfer, calibration, DCA, subgroups.</p></li>
-      </ol>
-
-      <div class="timeline">
-        <div class="t-cell" data-reveal><p class="t-k">Feb 20–27</p><h3>Foundations &amp; literature</h3></div>
-        <div class="t-cell" data-reveal="1"><p class="t-k">Feb 28 – Mar 4</p><h3>Exploratory analysis</h3></div>
-        <div class="t-cell" data-reveal="2"><p class="t-k">Mar 4–8</p><h3>Preprocessing &amp; features</h3></div>
-        <div class="t-cell" data-reveal="3"><p class="t-k">Mar 9–14</p><h3>Modelling &amp; comparison</h3></div>
-        <div class="t-cell" data-reveal><p class="t-k">Mar 14–18</p><h3>Explainability &amp; tool</h3></div>
-        <div class="t-cell" data-reveal="1"><p class="t-k">Mar 18–20</p><h3>Outreach &amp; dissertation</h3></div>
-      </div>
-    </section>
-
-    <!-- ===== shap ===== -->
-    <section class="section wrap" id="shap" aria-labelledby="shap-h">
-      <SectionHeadInline id="shap-h" num="Explainability" title="What the final model <em>actually pays attention to.</em>" lede="Mean |SHAP| across the held-out cohort — the cardiorenal axis, in descending order." />
-
-      <div class="driver-list" data-reveal>
-        {drivers.map((d) => (
-          <div class="driver">
-            <p class="driver-name">{d.name}</p>
-            <div class="gauge"><span style={`width:${d.w}`}></span></div>
-            <p class="driver-w">{d.w}</p>
-          </div>
-        ))}
-      </div>
-
-      <div class="shap-grid">
-        <div class="panel" data-reveal="1">
-          <p class="block-k">Why dischargeDay had to go</p>
-          <p class="panel-p">
-            Day-of-discharge correlates with when the record was written,
-            not with the patient. It inflated every horizon. Removing it
-            cost 0.109 AUROC at six months — and bought a model that
-            means what it says.
-          </p>
-        </div>
-        <div class="panel" data-reveal="2">
-          <p class="block-k">A note on GCS</p>
-          <p class="panel-p">
-            In the Zhang cohort GCS tops the chart partly because it is 15 for
-            97.2% of patients — its signal is mostly “is it ever low?”. The
-            MIMIC-IV extension answers that properly: leave the score missing
-            instead of imputing a normal one, add an independent ICU-stay flag
-            as a control, and the components still earn a small, consistent
-            increment.
-          </p>
-        </div>
-      </div>
-
-      <figure class="fig shap-fig" data-reveal data-title="SHAP beeswarm" data-cap="One dot per patient; colour is feature value. Position shows direction and magnitude of each feature's contribution.">
-        <img src="/hf-risk/assets/shap_beeswarm.png" alt="SHAP beeswarm plot for the final 6-month model" width="1282" height="948" loading="lazy" />
+      <p class="scope-caveat" style="font-size: 12px; color: var(--fg-muted); margin: 16px 0; max-width: 68ch;">
+        SHAP was run on the Zhang model and on both MIMIC-IV arms. The GCS family leads each cohort
+        independently, but only 7 of the Zhang top-20 features overlap the MIMIC ranking, so the
+        cross-cohort comparison stays qualitative rather than a rank correlation.
+      </p>
+      <figure class="fig" data-reveal data-title="SHAP beeswarm" data-cap="One dot per patient; colour is feature value. Verbal response sits at the top of this model.">
+        <img src="/hf-risk/assets/shap_beeswarm.png"
+          alt="SHAP beeswarm plot for the final 6-month model" width="1282" height="948" loading="lazy" />
+        <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+      </figure>
+      <figure class="fig" data-reveal data-title="Cross-cohort feature ranks" data-cap="Zhang top-20 against the MIMIC ranking. Only 7 features overlap, so the GCS family leading both cohorts is the only claim carried.">
+        <img src="/hf-risk/assets/shap_cross_cohort_ranks.png"
+          alt="Scatter of feature rank positions in the Zhang and MIMIC-IV SHAP rankings" width="1672" height="766" loading="lazy" />
+        <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+      </figure>
+      <figure class="fig" data-reveal data-title="SHAP beeswarm, ICU-only MIMIC" data-cap="Restricted to admissions that reached intensive care, where GCS is charted. Verbal response is this model's single strongest feature.">
+        <img src="/hf-risk/assets/shap_beeswarm_icu_only.png"
+          alt="SHAP beeswarm plot for the ICU-only MIMIC-IV six-month model" width="994" height="960" loading="lazy" />
         <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
       </figure>
     </section>
 
     <!-- ===== external ===== -->
     <section class="section wrap" id="external" aria-labelledby="external-h">
-      <SectionHeadInline id="external-h" num="External validation" title="Transportability to <em>MIMIC-IV.</em>" lede="The model was trained on Zhang cohort records and applied to 42,990 MIMIC-IV admissions with no retraining — a transportability check, not a clinical claim." />
+      <SectionHeadInline
+        id="external-h"
+        num="External validation"
+        title="Does it work in the US? Not directly, but retrained it does."
+        lede="I tested the Zhang-trained model on 42,990 US heart failure admissions from MIMIC-IV. Only 24 features overlap between the datasets, and US 6-month mortality is 22% versus 2.8% in Zhang. Applied directly, the model scored AUROC 0.600 (95% CI 0.593–0.606): a tight interval, so this is a real failure to transport, not noise. Retrained on US data with the 24 shared features, it reached 0.801."
+      />
+      <div class="external-numbers">
+        <div class="ext-num">
+          <p class="ext-k">0.600</p>
+          <p>Zhang model applied directly</p>
+        </div>
+        <div class="ext-num">
+          <p class="ext-k">0.801</p>
+          <p>Retrained on MIMIC-IV</p>
+        </div>
+        <div class="ext-num" style="border-left: 1px solid var(--rule); padding-left 12px;">
+          <p class="ext-k">0.710</p>
+          <p>Audited internal</p>
+        </div>
+      </div>
+      <figure class="fig" data-reveal data-title="External validation ROC" data-cap="Direct transfer to MIMIC-IV: 28-day 0.524, 6-month 0.599">
+        <img src="/hf-risk/assets/external_validation_roc.png"
+          alt="ROC curves for direct transfer to MIMIC-IV" width="1428" height="617" loading="lazy" />
+        <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
+      </figure>
+      <div class="external-compare">
+        <div class="ext-row">
+          <span class="ext-lbl">28-day</span>
+          <span class="ext-val held">0.781 <em>held-out</em></span>
+          <span class="ext-val transfer">0.524 <em>direct transfer</em></span>
+        </div>
+        <div class="ext-row">
+          <span class="ext-lbl">6-month</span>
+          <span class="ext-val held">0.710 <em>primary</em></span>
+          <span class="ext-val transfer">0.599 <em>conservative, positive</em></span>
+        </div>
+        <p class="ext-note">
+          Under true domain shift the AUROC falls substantially. A model trained in one
+          hospital system should not be deployed in another without local retraining and checking.
+        </p>
+      </div>
+    </section>
 
-      <div class="external-split">
-        <figure class="fig" data-reveal data-title="External validation ROC" data-cap="Direct transfer to MIMIC-IV: 28-day 0.524, 6-month 0.599 — above chance, far below internal.">
-          <img src="/hf-risk/assets/external_validation_roc.png" alt="ROC curves for direct transfer to MIMIC-IV" width="1428" height="617" loading="lazy" />
-          <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
-        </figure>
-
-        <div class="ext-compare" data-reveal="1">
-          <div class="ext-row">
-            <span class="ext-lbl">28-day</span>
-            <span class="ext-val held">0.781 <em>held-out</em></span>
-            <span class="ext-val transfer">0.524 <em>direct transfer</em></span>
-          </div>
-          <div class="ext-row">
-            <span class="ext-lbl">6-month</span>
-            <span class="ext-val held">0.710 <em>primary</em></span>
-            <span class="ext-val transfer">0.599 <em>conservative, positive</em></span>
-          </div>
-          <div class="ext-row">
-            <span class="ext-lbl">28-day gap</span>
-            <div class="gap-bar"><span style="width:33%"></span></div>
-            <span class="ext-pct">&minus;0.257</span>
-          </div>
-          <p class="ext-note">
-            Under true domain shift the 28-day AUROC falls from 0.781 to 0.524
-            — a 0.257 drop that leaves it barely above chance. Reported as a
-            transportability check, not a clinical claim. Retraining on local
-            data is the honest next step, which is exactly what the 2026 GCS
-            extension does.
+    <!-- ===== trust ===== -->
+    <section class="section wrap" id="trust" aria-labelledby="trust-h">
+      <SectionHeadInline
+        id="trust-h"
+        num="Trust"
+        title="How far can you trust it?"
+        lede="Ranking patients is not the same as giving reliable probabilities, or working equally for everyone. I checked calibration, subgroups and decision value. The honest summary: promising, but the test set is too small to be sure."
+      />
+      <div class="trust-panels">
+        <div class="cal-panel">
+          <h4>Calibration (6-month death)</h4>
+          <p>Brier 0.027, ECE 0.023.</p>
+          <p style="font-size: 11px; color: var(--fg-muted);">
+            A model that always predicts the average risk has a Brier score of about 0.027,
+            so the Brier score shows no gain over that baseline. Treat probabilities as rankings
+            until recalibrated.
+          </p>
+        </div>
+        <div class="subgroup-panel">
+          <h4>Subgroups</h4>
+          <p>No-CKD: AUROC 0.753; CKD: AUROC 0.571 (CI 0.09–1.00, only 2 deaths).</p>
+          <p>Female: AUROC 0.684; Male: AUROC 0.750.</p>
+          <p>Intervals overlap and are very wide, so I cannot claim equal performance, only that the data are too thin to say.</p>
+        </div>
+        <div class="dca-panel">
+          <h4>Decision curve analysis</h4>
+          <p>Model vs treat-all vs treat-none, thresholds 1–50%. Model net benefit beats treat-all from about the 2% threshold up.</p>
+          <p style="font-size: 11px; color: var(--fg-muted);">
+            From the CSV it appears to be only low thresholds (roughly up to about 10–15%).
           </p>
         </div>
       </div>
+      <p class="limitation-line" style="font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--rule-soft); padding-top: 16px; margin-top: 24px;">
+        Test set: 402 patients, 11 six-month deaths. Confidence intervals are wide.
+      </p>
     </section>
 
-    <!-- ===== evaluation ===== -->
-    <section class="section wrap" id="evaluation" aria-labelledby="eval-h">
-      <SectionHeadInline id="eval-h" num="Evaluation" title="Calibration, DCA, and <em>subgroup checks.</em>" lede="A model is only as good as its worst-calibrated decile. Brier 0.027, ECE 0.023." />
-
-      <div class="figures">
-        {figures.map((f, i) => (
-          <figure class="fig zoom" data-reveal data-src={f.src} data-title={f.title} data-cap={f.cap}>
-            <img src={`/hf-risk/assets/${f.src}`} alt={f.title} width={f.w} height={f.h} loading="lazy" />
-            <figcaption class="hover-cap"><span class="plus" aria-hidden="true">+</span> Click to expand</figcaption>
-          </figure>
-        ))}
+    <!-- ===== tool ===== -->
+    <section class="section wrap" id="tool" aria-labelledby="tool-h">
+      <SectionHeadInline
+        id="tool-h"
+        num="Tool"
+        title="Try the prototype."
+        lede="The retrained model pair runs embedded on this site: change any of 37 inputs and watch the six-month mortality estimate move, with and without the GCS components. Evaluated in your browser — nothing leaves your machine. A research demo, not a clinical device."
+      />
+      <div class="tool-cta">
+        <p>Two patient-grouped XGBoost arms on the same holdout — a 34-feature baseline and the same 34 plus the three GCS components — with the holdout calibration and per-component GCS attribution shown alongside the reading.</p>
+        <a class="btn btn-solid btn-attn" href={CASE_STORY_URL}>
+          Open the tool <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+        <span class="research-disclaimer" style="font-size: 11px; color: var(--fg-muted); margin-left: 16px; display: block;">
+          Research demo, not a clinical device.
+        </span>
       </div>
     </section>
 
-    <!-- ===== glossary ===== -->
-    <section class="section wrap-narrow" aria-labelledby="glossary-h">
-      <SectionHeadInline id="glossary-h" num="Glossary" title="Terms, <em>plainly.</em>" />
-
-      <div class="glossary">
-        <div class="gloss" data-reveal>
-          <p class="gloss-k">BNP</p>
-          <p>Range 2.7–5,000 pg/mL in this cohort; danger &gt; 400; mean &asymp; 1,280.</p>
+    <!-- ===== next ===== -->
+    <section class="section wrap" id="next" aria-labelledby="next-h">
+      <SectionHeadInline
+        id="next-h"
+        num="Next"
+        title="What I would do next."
+        lede="Four priority directions for the next phase of this project."
+      />
+      <div class="next-cards">
+        <div class="next-card">
+          <p class="card-k">1</p>
+          <h3>Pull GCS from MIMIC-IV</h3>
+          <p>chartevents items 220739, 223900, 223901, then retrain and run SHAP on US data</p>
         </div>
-        <div class="gloss" data-reveal="1">
-          <p class="gloss-k">LVEF</p>
-          <p>Healthy 55–70%; reduced &lt; 40%; missing for 68% — imputed with MICE.</p>
+        <div class="next-card">
+          <p class="card-k">2</p>
+          <h3>Test the discharge-variable question</h3>
+          <p>If not already done in the audit section, run the ablation and report the result</p>
         </div>
-        <div class="gloss" data-reveal="2">
-          <p class="gloss-k">NYHA</p>
-          <p>Class I–IV heart-failure severity; 52% Class III, 31% Class IV here.</p>
+        <div class="next-card">
+          <p class="card-k">3</p>
+          <h3>Prospective and UK validation</h3>
+          <p>NHS data, plus social determinants for readmission</p>
         </div>
-        <div class="gloss" data-reveal="3">
-          <p class="gloss-k">AUROC</p>
-          <p>Chicco &amp; Jurman benchmark &asymp; 0.73 for this dataset; final 0.710 at six months.</p>
-        </div>
-        <div class="gloss" data-reveal>
-          <p class="gloss-k">SHAP</p>
-          <p>Game-theory attributions: how much each feature moved this prediction.</p>
-        </div>
-        <div class="gloss" data-reveal="1">
-          <p class="gloss-k">MICE</p>
-          <p>Multivariate imputation by chained equations — used on 42 variables.</p>
+        <div class="next-card">
+          <p class="card-k">4</p>
+          <h3>Medicines optimisation</h3>
+          <p>Use the medication records (already in the project) to see whether treatment adds signal</p>
         </div>
       </div>
     </section>
 
-    <!-- ===== safety ===== -->
-    <aside class="safety wrap-narrow" role="note" data-reveal>
-      <span class="safety-mark" aria-hidden="true">!</span>
-      <div>
-        <p class="safety-k">Research-only, not clinically validated</p>
-        <p>
-          HF-RISK is a dissertation prototype. Its numbers describe a
-          specific 2021 cohort and one external transfer check. Do not use
-          it to make decisions about any patient.
-        </p>
-      </div>
-    </aside>
-
-    <!-- ===== references ===== -->
-    <section class="section wrap-narrow" aria-labelledby="refs-h">
-      <SectionHeadInline id="refs-h" num="References" title="Five sources, <em>no padding.</em>" />
-      <ol class="refs">
-        {refs.map((r) => <li>{r}</li>)}
-      </ol>
+    <!-- ===== method ===== -->
+    <section class="section wrap" id="method" aria-labelledby="method-h">
+      <SectionHeadInline
+        id="method-h"
+        num="Method"
+        title="Methods and reproducibility (collapsed, closed by default)"
+        lede="Data and cohorts · Preprocessing (drops, encoding, 3-tier imputation, MICE, feature engineering) · Models (LR, DT, RF, XGBoost, LightGBM; stratified 5-fold CV; SMOTE inside folds) · Survival (Kaplan-Meier, Cox, RSF) · Explainability (TreeSHAP) · External validation design · Reproducibility (143 features, random_state 17, repo link, nine scripts in run order 01_eda.py … 07_external_validation.py)."
+      />
+      <details class="method-details" open="false">
+        <summary>Data and cohorts</summary>
+        <p>Zhang cohort: 2,008 heart-failure patients from Sichuan, China, 2016–2019. MIMIC-IV: 42,990 heart-failure admissions. Patient-grouped 80/20 split on subject_id with seed 17.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>Preprocessing</summary>
+        <p>Dropped 11 unnamed/id columns, 2 near-zero-variance variables. Three-tier imputation: median under 10% missing, MICE 10–80%, remaining filled with training-set median. SMOTE only inside CV training folds.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>Models</summary>
+        <p>Five models: Logistic Regression, Decision Tree, Random Forest, XGBoost, LightGBM. Stratified 5-fold CV grouped on subject_id. SMOTE only inside training folds. Final model selection based on test AUROC.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>Survival</summary>
+        <p>Kaplan-Meier curves, Cox proportional hazards model, Random Survival Forest. C-index reported for both.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>Explainability</summary>
+        <p>TreeSHAP for global and per-patient explanations. SHAP summary bar and beeswarm plots.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>External validation</summary>
+        <p>Zhang models transported to MIMIC-IV with 24 shared features. AUROC reported for direct transfer and after retraining.</p>
+      </details>
+      <details class="method-details" open="false">
+        <summary>Reproducibility</summary>
+        <p>Repo: github.com/Nik85-png/hf-risk-heart-failure-ml. Nine scripts in run order: 01_eda.py … 07_external_validation.py. random_state 17 for all splits.</p>
+      </details>
     </section>
 
-    <!-- ===== page footer ===== -->
+    <!-- ===== footer ===== -->
     <footer class="hf-pagefoot">
       <div class="wrap hf-foot-grid">
         <div class="hf-foot-brand">
@@ -647,10 +790,18 @@ python app.py</code></pre>
         <div class="hf-foot-col">
           <p class="hf-foot-k">This page</p>
           <ul>
-            <li><a href="#tool">Live prototype</a></li>
-            <li><a href="#audit">Leakage audit</a></li>
-            <li><a href="#shap">SHAP drivers</a></li>
-            <li><a href="#evaluation">Evaluation figures</a></li>
+            <li><a href="#why">Why</a></li>
+            <li><a href="#the-plan">The plan</a></li>
+            <li><a href="#data">Data</a></li>
+            <li><a href="#audit">Audit</a></li>
+            <li><a href="#results">Results</a></li>
+            <li><a href="#survival">Survival</a></li>
+            <li><a href="#what-looks-at">What the model looks at</a></li>
+            <li><a href="#external">External validation</a></li>
+            <li><a href="#trust">Trust</a></li>
+            <li><a href="#tool">Tool</a></li>
+            <li><a href="#next">Next</a></li>
+            <li><a href="#method">Method</a></li>
           </ul>
         </div>
       </div>
@@ -659,1385 +810,392 @@ python app.py</code></pre>
         <span>HF-RISK · MSc Data Analytics · London Met.</span>
       </div>
     </footer>
-  </div>
 
-  <!-- ===== lightbox ===== -->
-  <div id="lightbox" class="lightbox" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Figure viewer">
-    <div class="lb-scrim" data-lb-close></div>
-    <div class="lb-box">
-      <button class="lb-close" data-lb-close aria-label="Close">&times;</button>
-      <img id="lbImg" src="" alt="" />
-      <p id="lbTitle" class="lb-title"></p>
-      <p id="lbMeta" class="lb-meta"></p>
-      <p class="lb-hint">Esc to close</p>
+    <!-- ===== research-only disclaimer throughout ===== -->
+    <aside class="safety wrap-narrow" role="note">
+      <span class="safety-mark" aria-hidden="true">!</span>
+      <div>
+        <p class="safety-k">Research-only, not clinically validated</p>
+        <p>
+          HF-RISK is a dissertation prototype. Its numbers describe a
+          specific 2021 cohort and one external transfer check. Do not use
+          it to make decisions about any patient.
+        </p>
+      </div>
+    </aside>
+
+    <!-- ===== references ===== -->
+    <section class="section wrap-narrow" aria-labelledby="refs-h">
+      <SectionHeadInline id="refs-h" num="References" title="Five sources, no padding." />
+      <ol class="refs">
+        {refs.map((r) => <li>{r}</li>)}
+      </ol>
+    </section>
+
+    <!-- ===== lightbox ===== -->
+    <div id="lightbox" class="lightbox" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Figure viewer">
+      <div class="lb-scrim" data-lb-close></div>
+      <div class="lb-box">
+        <button class="lb-close" data-lb-close aria-label="Close">&times;</button>
+        <img id="lbImg" src="" alt="" />
+        <p id="lbTitle" class="lb-title"></p>
+        <p id="lbMeta" class="lb-meta"></p>
+        <p class="lb-hint">Esc to close</p>
+      </div>
     </div>
   </div>
-</Layout>
 
-<script>
-  // Live tool status: no-cors probe (opaque response = reachable).
-  (function () {
-    var TOOL_URL = 'https://hf-risk-heart-failure-ml.onrender.com/';
-    var tag = document.getElementById('toolTag');
-    var cta = document.getElementById('toolCta');
-    var settled = false;
+  <!-- ===== lightbox behaviour ===== -->
+  <script>
+    // Click (or keyboard-activate) any .fig to view it large; close with the
+    // button, the scrim, or Escape. The lightbox is hidden in CSS by default,
+    // so this only enhances pages that opted into figure markup.
+    (() => {
+      const lb = document.getElementById('lightbox');
+      if (!lb) return;
 
-    function mark(state) {
-      if (settled) return;
-      settled = true;
-      if (!tag) return;
-      if (state === 'live') {
-        tag.classList.remove('checking');
-        tag.classList.add('ok');
-        tag.textContent = 'Live';
-      } else {
-        tag.classList.remove('checking');
-        tag.classList.add('down');
-        tag.textContent = 'Cold-start / unreachable';
-        if (cta) {
-          cta.textContent = 'Tool is waking up — try again in a moment \u2192';
-        }
-      }
-    }
+      const img = document.getElementById('lbImg');
+      const title = document.getElementById('lbTitle');
+      const meta = document.getElementById('lbMeta');
+      const closeBtn = lb.querySelector('.lb-close');
+      let lastFocus = null;
 
-    tag && tag.classList.add('checking');
-    var timer = setTimeout(function () { mark('down'); }, 7000);
-    fetch(TOOL_URL, { mode: 'no-cors', cache: 'no-store' })
-      .then(function () { clearTimeout(timer); mark('live'); })
-      .catch(function () { clearTimeout(timer); mark('down'); });
-  })();
+      const open = (fig) => {
+        const source = fig.querySelector('img');
+        if (!source) return;
+        img.src = source.currentSrc || source.src;
+        img.alt = source.alt || '';
+        title.textContent = fig.dataset.title || '';
+        meta.textContent = fig.dataset.cap || '';
+        title.hidden = !title.textContent;
+        meta.hidden = !meta.textContent;
+        lastFocus = document.activeElement;
+        lb.classList.add('is-open');
+        lb.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+        closeBtn.focus();
+      };
 
-  // Lightbox for figures.
-  (function () {
-    var lb = document.getElementById('lightbox');
-    var img = document.getElementById('lbImg');
-    var title = document.getElementById('lbTitle');
-    var meta = document.getElementById('lbMeta');
-    if (!lb) return;
+      const close = () => {
+        if (!lb.classList.contains('is-open')) return;
+        lb.classList.remove('is-open');
+        lb.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        img.src = '';
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+      };
 
-    function open(fig) {
-      var src = fig.getAttribute('data-src');
-      var t = fig.getAttribute('data-title') || '';
-      var c = fig.getAttribute('data-cap') || '';
-      var realImg = fig.querySelector('img');
-      img.src = src || (realImg && realImg.src) || '';
-      img.alt = t;
-      title.textContent = t;
-      meta.textContent = c;
-      lb.classList.add('open');
-      lb.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('lb-open');
-    }
-
-    function close() {
-      lb.classList.remove('open');
-      lb.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('lb-open');
-      img.src = '';
-    }
-
-    document.querySelectorAll('.fig.zoom').forEach(function (fig) {
-      fig.setAttribute('tabindex', '0');
-      fig.addEventListener('click', function () { open(fig); });
-      fig.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open(fig);
-        }
+      document.querySelectorAll('.fig').forEach((fig) => {
+        const source = fig.querySelector('img');
+        if (!source) return;
+        fig.setAttribute('role', 'button');
+        fig.setAttribute('tabindex', '0');
+        fig.setAttribute('aria-label', `Expand figure: ${fig.dataset.title || source.alt || 'figure'}`);
+        fig.addEventListener('click', () => open(fig));
+        fig.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            open(fig);
+          }
+        });
       });
-    });
 
-    lb.addEventListener('click', function (e) {
-      if (e.target.closest('[data-lb-close]')) close();
-    });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && lb.classList.contains('open')) close();
-    });
-  })();
-</script>
-
-<style>
-  .hf { --card: color-mix(in oklch, var(--bg) 92%, white); }
-  [data-theme='dark'] .hf { --card: color-mix(in oklch, var(--bg) 92%, black); }
-
-  /* ---- warn strip ---- */
-  .warn-strip {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px var(--pad-x);
-    background: color-mix(in oklch, var(--theme-complementary) 14%, var(--bg));
-    border-bottom: 1px solid color-mix(in oklch, var(--theme-complementary) 40%, transparent);
-    font-size: 12.5px;
-  }
-
-  .warn-strip p { margin: 0; color: var(--fg); }
-
-  .warn-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--theme-complementary);
-    flex: none;
-  }
-
-  /* ---- case-study sub nav ---- */
-  .hf-nav {
-    position: sticky;
-    top: 60px;
-    z-index: 40;
-    background: color-mix(in oklch, var(--bg) 86%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--rule-soft);
-  }
-
-  .hf-nav-inner {
-    display: flex;
-    align-items: center;
-    gap: clamp(16px, 3vw, 40px);
-    padding-block: 10px;
-  }
-
-  .hf-brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    letter-spacing: 0.06em;
-  }
-
-  .hf-brand .mark {
-    width: 22px;
-    height: 22px;
-    display: grid;
-    place-items: center;
-    background: var(--fg);
-    color: var(--bg);
-    border-radius: 4px;
-    font-size: 11px;
-  }
-
-  .hf-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: clamp(12px, 2vw, 24px);
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    flex: 1;
-  }
-
-  .hf-links a {
-    font-size: 10.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    text-decoration: none;
-  }
-
-  .hf-links a:hover { color: var(--fg); }
-
-  .hf-back {
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .hf-back:hover { color: var(--fg); }
-
-  @media (max-width: 720px) {
-    .hf-links { display: none; }
-  }
-
-  /* ---- hero ---- */
-  .hero {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr;
-    gap: clamp(32px, 5vw, 80px);
-    padding-block: clamp(56px, 8vw, 110px) clamp(32px, 4vw, 56px);
-    align-items: start;
-  }
-
-  .eyebrow-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin-bottom: 28px;
-  }
-
-  .hero h1 {
-    font-size: clamp(40px, 6.4vw, 88px);
-    margin-bottom: 0.4em;
-  }
-
-  .hero h1 em {
-    font-style: italic;
-    font-weight: 400;
-    color: var(--fg-muted);
-  }
-
-  .deck {
-    max-width: 56ch;
-    font-size: clamp(14px, 1.3vw, 17px);
-    color: var(--fg-muted);
-  }
-
-  .hero-meta {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 18px 32px;
-    margin: 36px 0 0;
-    padding-top: 22px;
-    border-top: 1px solid var(--rule-soft);
-  }
-
-  .hero-meta div { margin: 0; }
-
-  .hero-meta dt {
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin-bottom: 4px;
-  }
-
-  .hero-meta dd {
-    margin: 0;
-    font-size: 13.5px;
-  }
-
-  .hero-aside {
-    position: sticky;
-    top: 130px;
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    background: var(--card);
-    padding: clamp(20px, 2.4vw, 30px);
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .aside-k,
-  .block-k {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0 0 12px;
-  }
-
-  .aside-spec {
-    list-style: none;
-    margin: 0 0 8px;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .aside-spec a {
-    display: block;
-    padding: 7px 0;
-    font-size: 13px;
-    color: var(--fg-muted);
-    text-decoration: none;
-    border-bottom: 1px solid var(--rule-soft);
-    transition: color 200ms var(--ease-out), padding-left 200ms var(--ease-out);
-  }
-
-  .aside-spec a:hover { color: var(--fg); padding-left: 6px; }
-
-  @media (max-width: 960px) {
-    .hero { grid-template-columns: 1fr; }
-    .hero-aside { position: static; }
-  }
-
-  /* ---- section heads inside HF page ---- */
-  .section { padding-block: clamp(48px, 7vw, 96px); }
-
-  /* ---- tool ---- */
-  .tool-wrap {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: clamp(20px, 3vw, 40px);
-    align-items: start;
-  }
-
-  .tool-panel {
-    border: 1px solid var(--rule);
-    border-radius: 10px;
-    overflow: hidden;
-    background: var(--card);
-  }
-
-  .tool-chrome {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--rule-soft);
-    background: color-mix(in oklch, var(--fg) 4%, var(--card));
-  }
-
-  .chrome-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 1px solid var(--rule);
-  }
-
-  .chrome-title {
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    color: var(--fg-muted);
-    margin-left: 6px;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tool-tag {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    border-radius: 999px;
-    padding: 4px 12px;
-    border: 1px solid var(--rule);
-    white-space: nowrap;
-  }
-
-  .tool-tag.checking { color: var(--fg-muted); }
-
-  .tool-tag.ok {
-    color: var(--theme-primary);
-    border-color: var(--theme-primary);
-    animation: pulse 2.4s ease-in-out infinite;
-  }
-
-  .tool-tag.down {
-    color: var(--theme-complementary);
-    border-color: var(--theme-complementary);
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.45; }
-  }
-
-  .tool-launch {
-    padding: clamp(24px, 3vw, 40px);
-  }
-
-  .tool-launch h3 {
-    font-size: clamp(20px, 2.2vw, 28px);
-    margin-bottom: 20px;
-  }
-
-  .tool-launch-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    margin-bottom: 24px;
-  }
-
-  .mini {
-    border: 1px solid var(--rule-soft);
-    border-radius: 6px;
-    padding: 16px;
-  }
-
-  .mini-k {
-    font-size: 10.5px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--theme-primary);
-    margin: 0 0 6px;
-  }
-
-  .mini p:last-child {
-    margin: 0;
-    font-size: 12.5px;
-    color: var(--fg-muted);
-  }
-
-  .tool-embed-note {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin: 0;
-  }
-
-  .tool-primary-cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: linear-gradient(135deg, var(--theme-primary), var(--theme-complementary));
-    color: #fff;
-    text-decoration: none;
-    border-radius: 999px;
-    padding: 13px 26px;
-    font-size: 11px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    position: relative;
-  }
-
-  .tool-primary-cta::after {
-    content: 'Live';
-    position: absolute;
-    top: -9px;
-    right: -6px;
-    font-size: 8.5px;
-    letter-spacing: 0.12em;
-    background: var(--theme-complementary);
-    border-radius: 999px;
-    padding: 2px 8px;
-  }
-
-  .tool-embed-note a:not(.tool-primary-cta) {
-    font-size: 12px;
-    color: var(--fg-muted);
-  }
-
-  .tool-aside {
-    border: 1px solid var(--rule);
-    border-radius: 10px;
-    background: var(--card);
-    padding: clamp(20px, 2.4vw, 30px);
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  .tool-bullets {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .tool-bullets li {
-    padding-left: 22px;
-    position: relative;
-    font-size: 13.5px;
-    color: var(--fg-muted);
-  }
-
-  .tool-bullets li::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 7px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--theme-primary);
-  }
-
-  .safety-note {
-    border: 1px solid color-mix(in oklch, var(--theme-complementary) 45%, transparent);
-    background: color-mix(in oklch, var(--theme-complementary) 10%, var(--bg));
-    border-radius: 6px;
-    padding: 14px 16px;
-  }
-
-  .safety-note p { margin: 0; font-size: 12.5px; }
-
-  .local-run {
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0;
-  }
-
-  .tool-aside pre {
-    margin: 0;
-    background: var(--fg);
-    color: var(--bg);
-    border-radius: 6px;
-    padding: 16px;
-    font-size: 11.5px;
-    line-height: 1.7;
-    overflow-x: auto;
-  }
-
-  .tool-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  @media (max-width: 960px) {
-    .tool-wrap { grid-template-columns: 1fr; }
-    .tool-launch-grid { grid-template-columns: 1fr; }
-  }
-
-  /* ---- audit ---- */
-  .audit-head {
-    display: flex;
-    align-items: center;
-    gap: clamp(20px, 4vw, 48px);
-    margin-bottom: clamp(28px, 4vw, 44px);
-  }
-
-  .audit-big { flex: 1; }
-
-  .audit-k {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0 0 8px;
-  }
-
-  .audit-num {
-    font-family: var(--font-display);
-    font-size: clamp(56px, 8vw, 120px);
-    line-height: 1;
-    margin: 0;
-  }
-
-  .audit-num.before { color: var(--fg-muted); }
-
-  .audit-num.after { color: var(--theme-primary); }
-
-  .audit-arrow {
-    font-size: clamp(24px, 3vw, 40px);
-    color: var(--fg-muted);
-  }
-
-  .audit-table {
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-bottom: clamp(24px, 3vw, 36px);
-  }
-
-  .audit-row {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr;
-    gap: 12px;
-    padding: 14px clamp(14px, 2vw, 24px);
-    align-items: center;
-    font-size: 13.5px;
-  }
-
-  .audit-row:not(:last-child) {
-    border-bottom: 1px solid var(--rule-soft);
-  }
-
-  .audit-head-row {
-    background: color-mix(in oklch, var(--fg) 5%, var(--card));
-    font-size: 10.5px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-  }
-
-  .audit-row .before { color: var(--fg-muted); text-decoration: line-through; }
-  .audit-row .after { font-weight: 500; }
-
-  .delta-pill {
-    display: inline-block;
-    font-size: 11px;
-    border-radius: 999px;
-    padding: 3px 10px;
-    border: 1px solid var(--rule);
-  }
-
-  .delta-pill.down {
-    color: var(--theme-complementary);
-    border-color: color-mix(in oklch, var(--theme-complementary) 50%, transparent);
-  }
-
-  .delta-pill.up {
-    color: var(--theme-primary);
-    border-color: color-mix(in oklch, var(--theme-primary) 50%, transparent);
-  }
-
-  .removed {
-    border-top: 1px solid var(--rule-soft);
-    padding-top: 24px;
-  }
-
-  .removed-note {
-    font-size: 13px;
-    color: var(--fg-muted);
-    margin: 16px 0 0;
-    max-width: 62ch;
-  }
-
-  @media (max-width: 760px) {
-    .audit-head { flex-direction: column; align-items: flex-start; gap: 12px; }
-    .audit-arrow { transform: rotate(90deg); }
-    .audit-row { grid-template-columns: 1fr 1fr; }
-    .audit-head-row { display: none; }
-  }
-
-  /* ---- results ---- */
-  .results-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
-    background: var(--rule-soft);
-    border: 1px solid var(--rule-soft);
-  }
-
-  .result-card {
-    background: var(--bg);
-    padding: clamp(22px, 2.6vw, 34px);
-  }
-
-  .result-num {
-    font-family: var(--font-display);
-    font-size: clamp(36px, 4.4vw, 60px);
-    line-height: 1;
-    margin: 0 0 14px;
-  }
-
-  .result-bar {
-    height: 4px;
-    background: var(--rule-soft);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 14px;
-  }
-
-  .result-bar span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, var(--theme-primary), var(--theme-complementary));
-  }
-
-  .result-lbl {
-    font-size: 12.5px;
-    margin: 0 0 4px;
-  }
-
-  .result-model {
-    font-size: 10.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0;
-  }
-
-  @media (max-width: 900px) {
-    .results-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  @media (max-width: 520px) {
-    .results-grid { grid-template-columns: 1fr; }
-  }
-
-  /* ---- gcs extension ---- */
-  .gcs-hero {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(18px, 2.6vw, 36px);
-    margin-bottom: clamp(30px, 4vw, 48px);
-  }
-
-  .gcs-big {
-    border-top: 2px solid var(--theme-primary);
-    padding-top: 18px;
-  }
-
-  .gcs-k {
-    font-size: 10.5px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0 0 12px;
-  }
-
-  .gcs-k em {
-    font-style: italic;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-
-  .gcs-num {
-    font-family: var(--font-display);
-    font-size: clamp(20px, 2.4vw, 30px);
-    line-height: 1.15;
-    margin: 0 0 10px;
-  }
-
-  .gcs-num span { color: var(--fg-muted); }
-
-  .gcs-sub {
-    font-size: 12.5px;
-    color: var(--fg-muted);
-    margin: 0;
-  }
-
-  .gcs-table-wrap {
-    border: 1px solid var(--rule);
-    border-radius: 8px;
-    overflow-x: auto;
-  }
-
-  .gcs-table {
-    width: 100%;
-    min-width: 620px;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-
-  .gcs-table caption {
-    caption-side: top;
-    text-align: left;
-    padding: 16px 18px;
-    font-size: 12px;
-    color: var(--fg-muted);
-    border-bottom: 1px solid var(--rule-soft);
-  }
-
-  .gcs-table th,
-  .gcs-table td {
-    padding: 11px 18px;
-    text-align: left;
-    border-bottom: 1px solid var(--rule-soft);
-    font-weight: 400;
-  }
-
-  .gcs-table thead th {
-    font-size: 10.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    background: color-mix(in oklch, var(--fg) 4%, var(--card));
-    white-space: nowrap;
-  }
-
-  .gcs-table tbody th {
-    font-family: var(--font-display);
-    font-size: 13.5px;
-    white-space: nowrap;
-  }
-
-  .gcs-table .num {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-
-  .gcs-table tr:last-child th,
-  .gcs-table tr:last-child td { border-bottom: 0; }
-
-  .gcs-table .is-null,
-  .gcs-table .is-provisional {
-    background: color-mix(in oklch, var(--fg) 3%, transparent);
-  }
-
-  .gcs-table .is-null td.num:last-child,
-  .gcs-table .is-provisional td.num:last-child { color: var(--fg-muted); }
-
-  .gcs-legend {
-    margin: 0;
-    padding: 12px 18px;
-    font-size: 11.5px;
-    color: var(--fg-muted);
-    border-top: 1px solid var(--rule-soft);
-  }
-
-  .gcs-notes {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(16px, 2.4vw, 32px);
-    margin-top: clamp(28px, 3.4vw, 44px);
-  }
-
-  .gcs-notes .panel { margin: 0; }
-
-  .gcs-caveat {
-    margin-top: clamp(28px, 3.4vw, 44px);
-    border: 1px solid var(--rule);
-    border-left: 3px solid var(--theme-complementary);
-    border-radius: 8px;
-    padding: clamp(20px, 2.4vw, 30px);
-    background: var(--card);
-  }
-
-  .caveat-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .caveat-list li {
-    font-size: 13.5px;
-    color: var(--fg-muted);
-    padding-left: 18px;
-    position: relative;
-  }
-
-  .caveat-list li::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0.62em;
-    width: 6px;
-    height: 1px;
-    background: var(--fg-muted);
-  }
-
-  .gcs-figs {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(14px, 2vw, 24px);
-    margin-top: clamp(28px, 3.4vw, 44px);
-  }
-
-  @media (max-width: 960px) {
-    .gcs-hero { grid-template-columns: 1fr; }
-    .gcs-notes { grid-template-columns: 1fr; }
-    .gcs-figs { grid-template-columns: 1fr; }
-  }
-
-  /* ---- process ---- */
-  .process-steps {
-    list-style: none;
-    margin: 0 0 clamp(40px, 5vw, 64px);
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: clamp(16px, 2.4vw, 32px);
-    counter-reset: step;
-  }
-
-  .process-steps li {
-    border-top: 1px solid var(--rule);
-    padding-top: 16px;
-  }
-
-  .step-k {
-    font-size: 10.5px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--theme-primary);
-    display: block;
-    margin-bottom: 8px;
-  }
-
-  .process-steps h3 {
-    font-size: 18px;
-    margin-bottom: 8px;
-  }
-
-  .process-steps p {
-    margin: 0;
-    font-size: 13px;
-    color: var(--fg-muted);
-  }
-
-  .timeline {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 1px;
-    background: var(--rule-soft);
-    border: 1px solid var(--rule-soft);
-  }
-
-  .t-cell {
-    background: var(--bg);
-    padding: clamp(16px, 2vw, 26px);
-    position: relative;
-  }
-
-  .t-cell::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 22px;
-    height: 1px;
-    background: var(--theme-primary);
-  }
-
-  .t-k {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0 0 8px;
-  }
-
-  .t-cell h3 {
-    font-size: 14px;
-    margin: 0;
-  }
-
-  @media (max-width: 1000px) {
-    .process-steps { grid-template-columns: repeat(2, 1fr); }
-    .timeline { grid-template-columns: repeat(3, 1fr); }
-  }
-
-  @media (max-width: 560px) {
-    .process-steps { grid-template-columns: 1fr; }
-    .timeline { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  /* ---- shap ---- */
-  .driver-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: clamp(32px, 4vw, 48px);
-  }
-
-  .driver {
-    display: grid;
-    grid-template-columns: minmax(180px, 280px) 1fr 56px;
-    gap: 16px;
-    align-items: center;
-  }
-
-  .driver-name {
-    margin: 0;
-    font-size: 13px;
-  }
-
-  .gauge {
-    height: 10px;
-    background: var(--rule-soft);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .gauge span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, var(--theme-primary), var(--theme-complementary));
-    border-radius: 999px;
-  }
-
-  .driver-w {
-    margin: 0;
-    font-family: var(--font-display);
-    font-size: 12px;
-    color: var(--fg-muted);
-    text-align: right;
-  }
-
-  .shap-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(16px, 2.4vw, 32px);
-    margin-bottom: clamp(32px, 4vw, 48px);
-  }
-
-  .panel-p {
-    margin: 0;
-    font-size: 14px;
-    color: var(--fg-muted);
-  }
-
-  @media (max-width: 760px) {
-    .driver { grid-template-columns: 1fr; gap: 6px; }
-    .driver-w { text-align: left; }
-    .shap-grid { grid-template-columns: 1fr; }
-  }
-
-  /* ---- figures ---- */
-  .fig {
-    margin: 0;
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--card);
-    position: relative;
-  }
-
-  .fig img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  .fig.zoom {
-    cursor: zoom-in;
-    transition: transform 300ms var(--ease-out), box-shadow 300ms var(--ease-out);
-  }
-
-  .fig.zoom:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 40px color-mix(in oklch, var(--fg) 12%, transparent);
-  }
-
-  .hover-cap {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    background: color-mix(in oklch, var(--bg) 82%, transparent);
-    backdrop-filter: blur(6px);
-    border: 1px solid var(--rule-soft);
-    border-radius: 999px;
-    padding: 5px 12px;
-    margin: 0;
-    opacity: 0;
-    transition: opacity 250ms var(--ease-out);
-  }
-
-  .fig.zoom:hover .hover-cap,
-  .fig.zoom:focus-visible .hover-cap { opacity: 1; }
-
-  .plus {
-    width: 14px;
-    height: 14px;
-    display: grid;
-    place-items: center;
-    border: 1px solid currentColor;
-    border-radius: 50%;
-    font-size: 11px;
-    line-height: 1;
-  }
-
-  .shap-fig { margin: 0 0 clamp(24px, 3vw, 40px); }
-
-  .external-split {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: clamp(20px, 3vw, 40px);
-    align-items: start;
-  }
-
-  .ext-compare {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  .ext-row {
-    display: grid;
-    grid-template-columns: 90px 1fr 1fr;
-    gap: 12px;
-    align-items: center;
-    padding: 16px;
-    border: 1px solid var(--rule-soft);
-    border-radius: 6px;
-  }
-
-  .ext-lbl {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-  }
-
-  .ext-val {
-    font-family: var(--font-display);
-    font-size: 20px;
-  }
-
-  .ext-val em {
-    display: block;
-    font-style: normal;
-    font-family: var(--font-body);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin-top: 2px;
-  }
-
-  .ext-val.transfer { color: var(--theme-complementary); }
-
-  .gap-bar {
-    height: 8px;
-    background: var(--rule-soft);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .gap-bar span {
-    display: block;
-    height: 100%;
-    background: var(--theme-complementary);
-  }
-
-  .ext-pct {
-    font-family: var(--font-display);
-    font-size: 18px;
-    color: var(--theme-complementary);
-    text-align: right;
-  }
-
-  .ext-note {
-    margin: 0;
-    font-size: 13px;
-    color: var(--fg-muted);
-  }
-
-  .figures {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(14px, 2vw, 24px);
-  }
-
-  @media (max-width: 960px) {
-    .external-split { grid-template-columns: 1fr; }
-    .figures { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  @media (max-width: 620px) {
-    .figures { grid-template-columns: 1fr; }
-  }
-
-  /* ---- glossary ---- */
-  .glossary {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1px;
-    background: var(--rule-soft);
-    border: 1px solid var(--rule-soft);
-  }
-
-  .gloss {
-    background: var(--bg);
-    padding: clamp(18px, 2.2vw, 28px);
-  }
-
-  .gloss-k {
-    font-family: var(--font-display);
-    font-size: 14px;
-    letter-spacing: 0.08em;
-    color: var(--theme-primary);
-    margin: 0 0 8px;
-  }
-
-  .gloss p:last-child {
-    margin: 0;
-    font-size: 12.5px;
-    color: var(--fg-muted);
-  }
-
-  @media (max-width: 860px) {
-    .glossary { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  @media (max-width: 560px) {
-    .glossary { grid-template-columns: 1fr; }
-  }
-
-  /* ---- safety ---- */
-  .safety {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 20px;
-    align-items: start;
-    border: 1px solid color-mix(in oklch, var(--theme-complementary) 45%, transparent);
-    background: color-mix(in oklch, var(--theme-complementary) 8%, var(--bg));
-    border-radius: 8px;
-    padding: clamp(22px, 3vw, 34px);
-    margin-top: clamp(40px, 5vw, 64px);
-  }
-
-  .safety-mark {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: var(--theme-complementary);
-    color: #fff;
-    font-family: var(--font-display);
-    font-size: 18px;
-  }
-
-  .safety-k {
-    font-family: var(--font-display);
-    font-size: 16px;
-    margin: 0 0 8px;
-  }
-
-  .safety p:last-child {
-    margin: 0;
-    font-size: 13.5px;
-    color: var(--fg-muted);
-  }
-
-  /* ---- refs ---- */
-  .refs {
-    margin: 0;
-    padding-left: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .refs li {
-    font-size: 13px;
-    color: var(--fg-muted);
-  }
-
-  /* ---- page footer ---- */
-  .hf-pagefoot {
-    margin-top: clamp(72px, 9vw, 120px);
-    border-top: 1px solid var(--rule);
-  }
-
-  .hf-foot-grid {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr;
-    gap: clamp(24px, 3vw, 48px);
-    padding-block: clamp(40px, 5vw, 64px);
-  }
-
-  .sig {
-    font-family: var(--font-display);
-    font-size: 22px;
-    font-style: italic;
-    margin: 0 0 16px;
-  }
-
-  .hf-foot-cta { display: flex; gap: 10px; flex-wrap: wrap; }
-
-  .hf-foot-k {
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 0 0 14px;
-  }
-
-  .hf-foot-col ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .hf-foot-col a {
-    font-size: 13px;
-    color: var(--fg-muted);
-    text-decoration: none;
-  }
-
-  .hf-foot-col a:hover { color: var(--fg); }
-
-  .foot-bottom {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    border-top: 1px solid var(--rule-soft);
-    padding-block: 20px;
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-  }
-
-  @media (max-width: 820px) {
-    .hf-foot-grid { grid-template-columns: 1fr; }
-  }
-
-  /* ---- lightbox ---- */
-  .lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: none;
-  }
-
-  .lightbox.open { display: block; }
-
-  .lb-scrim {
-    position: absolute;
-    inset: 0;
-    background: color-mix(in oklch, var(--bg) 88%, black);
-    backdrop-filter: blur(8px);
-  }
-
-  .lb-box {
-    position: relative;
-    z-index: 1;
-    max-width: min(1100px, 92vw);
-    margin: 5vh auto;
-    background: var(--bg);
-    border: 1px solid var(--rule);
-    border-radius: 8px;
-    padding: clamp(16px, 2.4vw, 28px);
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-
-  .lb-box img {
-    width: 100%;
-    height: auto;
-    border-radius: 4px;
-  }
-
-  .lb-close {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 1px solid var(--rule);
-    background: var(--bg);
-    color: var(--fg);
-    font-size: 20px;
-    cursor: pointer;
-    line-height: 1;
-  }
-
-  .lb-title {
-    font-family: var(--font-display);
-    font-size: 17px;
-    margin: 16px 0 4px;
-  }
-
-  .lb-meta {
-    font-size: 13px;
-    color: var(--fg-muted);
-    margin: 0;
-  }
-
-  .lb-hint {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-    margin: 12px 0 0;
-  }
-
-  body.lb-open { overflow: hidden; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tool-tag.ok { animation: none; }
-  }
-</style>
+      lb.querySelectorAll('[data-lb-close]').forEach((el) => el.addEventListener('click', close));
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') close();
+      });
+    })();
+  </script>
+
+  <!-- ===== styles ===== -->
+  <style>
+    /* ---- warn strip ---- */
+    .warn-strip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px var(--pad-x);
+      background: color-mix(in oklch, var(--theme-complementary) 14%, var(--bg));
+      border-bottom: 1px solid color-mix(in oklch, var(--theme-complementary) 40%, transparent);
+      font-size: 12.5px;
+    }
+    .warn-strip p { margin: 0; color: var(--fg); }
+    .warn-dot {
+      width: 9px; height: 9px; border-radius: 50%; background: var(--theme-complementary); flex: none;
+    }
+
+    /* ---- case-study sub nav ---- */
+    .hf-nav { position: sticky; top: 60px; z-index: 40; background: color-mix(in oklch, var(--bg) 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--rule-soft); }
+    .hf-nav-inner { display: flex; align-items: center; gap: clamp(16px, 3vw, 40px); padding-block: 10px; }
+    .hf-brand { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 13px; font-weight: 600; text-decoration: none; letter-spacing: 0.06em; }
+    .hf-brand .mark { width: 22px; height: 22px; display: grid; place-items: center; background: var(--fg); color: var(--bg); border-radius: 4px; font-size: 11px; }
+    .hf-links { display: flex; flex-wrap: wrap; gap: clamp(12px, 2vw, 24px); list-style: none; margin: 0; padding: 0; flex: 1; }
+    .hf-links a { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); text-decoration: none; }
+    .hf-links a:hover { color: var(--fg); }
+    .hf-back { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-muted); text-decoration: none; white-space: nowrap; }
+    .hf-back:hover { color: var(--fg); }
+    @media (max-width: 720px) { .hf-links { display: none; } }
+
+    /* ---- hero ---- */
+    .hero { display: grid; grid-template-columns: 1.6fr 1fr; gap: clamp(32px, 5vw, 80px); padding-block: clamp(56px, 8vw, 110px) clamp(32px, 4vw, 56px); align-items: start; }
+    .eyebrow-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 28px; }
+    .hero h1 { font-size: clamp(40px, 6.4vw, 88px); margin-bottom: 0.4em; }
+    .hero h1 em { font-style: italic; font-weight: 400; color: var(--fg-muted); }
+    .deck { max-width: 56ch; font-size: clamp(14px, 1.3vw, 17px); color: var(--fg-muted); }
+    .hero-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 32px; margin: 36px 0 0; padding-top: 22px; border-top: 1px solid var(--rule-soft); }
+    .hero-meta div { margin: 0; }
+    .hero-meta dt { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 4px; }
+    .hero-meta dd { margin: 0; font-size: 13.5px; }
+    .hero-aside { position: sticky; top: 130px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); padding: clamp(20px, 2.4vw, 30px); display: flex; flex-direction: column; gap: 14px; }
+    @media (max-width: 960px) { .hero { grid-template-columns: 1fr; } .hero-aside { position: static; } }
+
+    /* ---- section heads inside HF page ---- */
+    .section { padding-block: clamp(48px, 7vw, 96px); }
+
+    /* ---- stats ---- */
+    .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(12px, 1.6vw, 20px); }
+    @media (max-width: 860px) { .stat-strip { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .stat-strip { grid-template-columns: 1fr; } }
+    .stat .k { font-variant-numeric: tabular-nums; }
+    .stat .lbl { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg); margin: 0 0 4px; }
+    .stat .sub { font-size: 12.5px; color: var(--fg-muted); margin: 0; }
+    .note { font-size: 11px; color: var(--fg-muted); margin-top: 8px; }
+
+    /* ---- why ---- */
+    .why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin: 24px 0; }
+    @media (max-width: 760px) { .why-grid { grid-template-columns: 1fr; } }
+    .why-card { text-align: center; }
+    .why-k { font-family: var(--font-display); font-size: clamp(32px, 4.2vw, 56px); line-height: 1; margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+    .why-p { font-size: 13px; color: var(--fg-muted); margin: 0; }
+
+    /* ---- the-plan ---- */
+    .plan-flow { display: flex; gap: 24px; margin: 24px 0; }
+    .flow-node { flex: 1; text-align: center; }
+    .flow-node div:first-child { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .flow-node div:last-child { font-size: 12px; color: var(--fg-muted); }
+
+    /* ---- data ---- */
+    .data-visual { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin: 24px 0; }
+    @media (max-width: 760px) { .data-visual { grid-template-columns: 1fr; } }
+    .outcome-rates { margin-bottom: 24px; }
+    .outcome-rates ul { padding-left: 20px; }
+    .outcome-rates li { margin: 8px 0; font-size: 13px; }
+    .table1 { width: 100%; border-collapse: collapse; }
+    .table1 th, .table1 td { padding: 8px 12px; border-bottom: 1px solid var(--rule-soft); font-size: 13px; }
+    .table1 th { text-align: left; color: var(--fg-muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .details-ac { margin: 24px 0; }
+    .details-ac summary { font-weight: 500; cursor: pointer; }
+    .fig img { max-width: 100%; height: auto; }
+
+    /* ---- audit ---- */
+    .audit-contrast { display: flex; gap: 48px; margin: 24px 0; }
+    .audit-before, .audit-after { flex: 1; }
+    .audit-k { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 8px; }
+    .audit-num { font-family: var(--font-display); font-size: clamp(56px, 8vw, 120px); line-height: 1; margin: 0; }
+    .audit-num.before { color: var(--fg-muted); }
+    .audit-num.after { color: var(--theme-primary); }
+    .audit-table { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 24px; }
+    .audit-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr; gap: 12px; padding: 14px clamp(14px, 2vw, 24px); align-items: center; font-size: 13.5px; }
+    .audit-row:not(:last-child) { border-bottom: 1px solid var(--rule-soft); }
+    .audit-head-row { background: color-mix(in oklch, var(--fg) 5%, var(--card)); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-muted); }
+    .audit-row .before { color: var(--fg-muted); text-decoration: line-through; }
+    .audit-row .after { font-weight: 500; }
+    .delta-pill { display: inline-block; font-size: 11px; border-radius: 999px; padding: 3px 10px; border: 1px solid var(--rule); }
+    .delta-pill.down { color: var(--theme-complementary); border-color: color-mix(in oklch, var(--theme-complementary) 50%, transparent); }
+    .delta-pill.up { color: var(--theme-primary); border-color: color-mix(in oklch, var(--theme-primary) 50%, transparent); }
+    .removed { border-top: 1px solid var(--rule-soft); padding-top: 24px; }
+    .removed-note { font-size: 13px; color: var(--fg-muted); margin: 16px 0 0; max-width: 62ch; }
+    .still-checked { border-top: 1px solid var(--rule-soft); padding-top: 24px; margin: 24px 0; }
+    .block-k { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 12px; }
+
+    /* ---- results ---- */
+    .results-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule-soft); }
+    @media (max-width: 900px) { .results-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .results-grid { grid-template-columns: 1fr; } }
+    .result-card { background: var(--bg); padding: clamp(22px, 2.6vw, 34px); }
+    .result-num { font-family: var(--font-display); font-size: clamp(36px, 4.4vw, 60px); line-height: 1; margin: 0 0 14px; }
+    .result-bar { height: 4px; background: var(--rule-soft); border-radius: 999px; overflow: hidden; margin-bottom: 14px; }
+    .result-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--theme-primary), var(--theme-complementary)); }
+    .result-lbl { font-size: 12.5px; margin: 0 0 4px; }
+    .result-model { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin: 0; }
+    .callout { font-size: 12px; color: var(--fg-muted); margin: 24px 0; max-width: 68ch; }
+    .threshold-card { border: 1px solid var(--rule); border-radius: 6px; padding: 16px; margin: 24px 0; }
+    .threshold-p { margin: 0; font-size: 13px; }
+
+    /* ---- survival ---- */
+    .survival-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin: 24px 0; }
+    @media (max-width: 760px) { .survival-visual { grid-template-columns: 1fr; } }
+    .c-indices { margin-top: 24px; }
+    .c-indices p { margin: 8px 0; font-size: 13px; }
+    .c-indices strong { color: var(--theme-primary); }
+
+    /* ---- what the model looks at ---- */
+    .shap-top10 { width: 100%; border-collapse: collapse; margin: 24px 0; }
+    .shap-top10 th, .shap-top10 td { padding: 8px 12px; border-bottom: 1px solid var(--rule-soft); font-size: 13px; }
+    .shap-top10 th { color: var(--fg-muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .scope-caveat { font-size: 12px; color: var(--fg-muted); margin: 16px 0; max-width: 68ch; }
+    .shap-fig img { max-width: 100%; height: auto; }
+
+    /* ---- external ---- */
+    .external-numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin: 24px 0; }
+    @media (max-width: 760px) { .external-numbers { grid-template-columns: 1fr; } }
+    .ext-num { text-align: center; }
+    .ext-k { font-family: var(--font-display); font-size: clamp(32px, 4.2vw, 56px); line-height: 1; margin: 0 0 4px; }
+    .ext-lbl { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 4px; display: block; }
+    .ext-val { font-size: 13px; color: var(--fg-muted); }
+    .ext-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+    .ext-pct { color: var(--fg-muted); font-size: 12px; }
+    .gap-bar { height: 8px; background: var(--rule-soft); border-radius: 999px; overflow: hidden; margin: 4px 0 0; }
+    .ext-note { font-size: 12px; color: var(--fg-muted); margin: 24px 0; max-width: 68ch; }
+
+    /* ---- trust ---- */
+    .trust-panels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin: 24px 0; }
+    @media (max-width: 760px) { .trust-panels { grid-template-columns: 1fr; } }
+    .cal-panel, .subgroup-panel, .dca-panel { padding: 20px; border: 1px solid var(--rule); border-radius: 8px; }
+    .cal-panel h4, .subgroup-panel h4, .dca-panel h4 { margin: 0 0 12px; font-size: 13px; }
+    .limitation-line { border-top: 1px solid var(--rule-soft); padding-top: 16px; margin-top: 24px; font-size: 12px; color: var(--fg-muted); }
+
+    /* ---- tool ---- */
+    .tool-cta { display: flex; align-items: center; gap: 16px; margin: 24px 0; }
+    .research-disclaimer { font-size: 11px; color: var(--fg-muted); display: block; }
+    .tool-aside { border: 1px solid var(--rule); border-radius: 10px; background: var(--card); padding: clamp(20px, 2.4vw, 30px); display: flex; flex-direction: column; gap: 18px; }
+
+    /* ---- next ---- */
+    .next-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin: 24px 0; }
+    @media (max-width: 820px) { .next-cards { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .next-cards { grid-template-columns: 1fr; } }
+    .next-card { text-align: center; padding: 24px; border: 1px solid var(--rule); border-radius: 8px; }
+    .card-k { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+    .next-card h3 { font-size: 13px; margin: 8px 0; }
+    .next-card p { font-size: 12px; color: var(--fg-muted); margin: 0; }
+
+    /* ---- method ---- */
+    .method-details { margin: 24px 0; }
+    .method-details summary { font-weight: 500; cursor: pointer; }
+    .method-details p { margin: 8px 0; font-size: 13px; }
+
+    /* ---- footer ---- */
+    .hf-pagefoot { margin-top: clamp(48px, 6vw, 72px); }
+    .hf-foot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; margin: 0 0 32px; }
+    @media (max-width: 760px) { .hf-foot-grid { grid-template-columns: 1fr; } }
+    .hf-foot-brand { margin: 0 0 24px; }
+    .hf-foot-k { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 12px; display: block; }
+    .hf-foot-col ul { list-style: none; margin: 0; padding: 0; }
+    .hf-foot-col li { font-size: 13px; margin: 4px 0; }
+    .hf-foot-col a { color: var(--fg-muted); text-decoration: none; }
+    .hf-foot-col a:hover { color: var(--fg); }
+    .foot-bottom { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--rule-soft); margin-top: 24px; }
+
+    /* ---- figures ---- */
+    .fig { margin: 28px 0; }
+    .fig img {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: zoom-in;
+      border: 1px solid var(--rule-soft);
+      border-radius: 6px;
+      background: var(--card);
+    }
+    .fig-cap, .hover-cap {
+      margin: 10px 0 0;
+      font-size: 12px;
+      color: var(--fg-muted);
+      text-align: center;
+    }
+    .hover-cap { display: flex; align-items: center; justify-content: center; gap: 8px; cursor: zoom-in; }
+    .hover-cap .plus {
+      display: inline-grid;
+      place-items: center;
+      width: 17px;
+      height: 17px;
+      border: 1px solid var(--rule);
+      border-radius: 50%;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .fig:hover .hover-cap { color: var(--fg); }
+    .fig:focus-visible { outline: 2px solid var(--fg); outline-offset: 6px; border-radius: 8px; }
+
+    /* ---- lightbox (hidden until a figure is activated) ---- */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(16px, 4vw, 56px);
+      background: rgba(0, 0, 0, 0.88);
+    }
+    .lightbox.is-open { display: flex; }
+    .lb-box { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 100%; max-height: 100%; }
+    .lb-close {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--rule);
+      border-radius: 50%;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .lb-close:hover { background: var(--card); }
+    #lbImg { max-width: min(1200px, 92vw); max-height: 74vh; width: auto; height: auto; border-radius: 6px; background: #fff; }
+    .lb-title { margin: 14px 0 0; font-size: 14px; color: #fff; text-align: center; }
+    .lb-meta { margin: 6px 0 0; max-width: 62ch; font-size: 12px; color: rgba(255, 255, 255, 0.72); text-align: center; }
+    .lb-hint { margin: 12px 0 0; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+
+    /* ---- label audit (the second audit, in the same section) ---- */
+    .label-audit { border-top: 1px solid var(--rule-soft); padding-top: clamp(26px, 3.2vw, 40px); margin-top: clamp(26px, 3.2vw, 40px); }
+    .label-audit h3 { font-size: clamp(20px, 2.4vw, 28px); margin: 0 0 0.5em; max-width: 40ch; }
+    .label-audit-lede { font-size: 13.2px; color: var(--fg-muted); max-width: 84ch; margin: 0 0 clamp(22px, 2.8vw, 34px); }
+
+    .find-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(16px, 2vw, 26px); }
+    @media (max-width: 820px) { .find-grid { grid-template-columns: 1fr; } }
+    .find { border-top: 2px solid var(--theme-complementary); padding-top: 16px; }
+    .find-k { font-family: var(--font-display); font-size: 16px; margin: 0 0 8px; }
+    .find-v { font-size: 11.4px; margin: 0 0 10px; color: var(--fg-muted); }
+    .find-v code { font-family: var(--font-body); font-size: 11px; word-break: break-word; }
+    .find-b { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
+
+    .zhang { margin-top: clamp(28px, 3.4vw, 48px); }
+    .zhang-head h4 { font-family: var(--font-display); font-size: clamp(18px, 2vw, 23px); margin: 0 0 0.4em; }
+    .zhang-head p { font-size: 13.2px; color: var(--fg-muted); max-width: 84ch; margin: 0 0 18px; }
+
+    .gcs-table-wrap { border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+    .gcs-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; }
+    .gcs-table caption { caption-side: top; text-align: left; font-size: 11.6px; color: var(--fg-muted); padding: 12px 14px; border-bottom: 1px solid var(--rule-soft); }
+    .gcs-table th, .gcs-table td { text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
+    .gcs-table thead th { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-muted); font-weight: 400; }
+    .gcs-table tbody th { text-align: left; font-weight: 400; font-family: var(--font-body); }
+    .gcs-table tr:last-child th, .gcs-table tr:last-child td { border-bottom: 0; }
+    .gcs-table .is-flag td, .gcs-table .is-flag th { background: color-mix(in oklch, var(--theme-complementary) 12%, transparent); }
+    .gcs-table .is-total th, .gcs-table .is-total td { border-top: 1px solid var(--rule); color: var(--fg-muted); }
+
+    .zhang-notes { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+    .zhang-notes li { font-size: 13px; color: var(--fg-muted); padding-left: 18px; position: relative; max-width: 96ch; }
+    .zhang-notes li::before { content: ''; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--theme-complementary); }
+    .zhang-notes strong { color: var(--fg); }
+
+    .next-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 2.4vw, 34px); margin-top: clamp(28px, 3.4vw, 48px); }
+    @media (max-width: 820px) { .next-grid { grid-template-columns: 1fr; } }
+    .next { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); padding: clamp(18px, 2.2vw, 26px); }
+    .next ul { margin: 0; padding-left: 18px; display: grid; gap: 9px; }
+    .next li { font-size: 12.8px; color: var(--fg-muted); }
+    .next code { font-size: 11.4px; }
+    .next em { font-style: italic; color: var(--fg); }
+
+    .correction { margin-top: clamp(24px, 3vw, 40px); border: 1px solid color-mix(in oklch, var(--theme-complementary) 40%, transparent); background: color-mix(in oklch, var(--theme-complementary) 8%, var(--bg)); border-radius: 8px; padding: clamp(18px, 2.4vw, 28px); display: grid; gap: 10px; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); align-items: start; }
+    @media (max-width: 720px) { .correction { grid-template-columns: 1fr; } }
+    .correction-k { font-family: var(--font-display); font-size: 15px; margin: 0; }
+    .correction p:last-child { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
+  </style>
+</Layout>

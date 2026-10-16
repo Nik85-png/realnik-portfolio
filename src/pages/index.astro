@@ -116,7 +116,7 @@ const projects = [
 // --- Quick links to the rest of the site ------------------------------------
 const explore = [
   { title: 'Projects', body: 'Two finished pieces of work, both documented end to end — including what did not survive scrutiny.', href: '/projects/', cta: 'See all projects' },
-  { title: 'HF-RISK case study', body: 'The leakage audit, the SHAP drivers, calibration and the MIMIC-IV transport check in full.', href: '/hf-risk/', cta: 'Read HF-RISK' },
+  { title: 'HF-RISK case study', body: 'The leakage audit (0.819 → 0.710), the Oct 2026 GCS extension (+0.0138 AUROC), holdout calibration (ECE 0.0112) and the MIMIC-IV transport check — in full.', href: '/hf-risk/', cta: 'Read HF-RISK' },
   { title: 'Card Lab', body: 'The live 8×8 card-sorting explorer: nine analysis modes and move-by-move replay.', href: '/cards-analysis/', cta: 'Open Card Lab' },
   { title: 'About · CV', body: 'Full work history, education, skills and the downloadable CV as a PDF.', href: '/info/', cta: 'Read about me' },
 ];
@@ -142,7 +142,7 @@ const faqs = [
   },
   {
     q: 'What did the Glasgow Coma Scale extension find?',
-    a: 'GCS components — eye opening, verbal response and movement — added a small, consistent AUROC gain when I retrained inside MIMIC-IV: +0.0138 at 28 days (95% CI 0.0090 to 0.0194) and +0.0086 at six months, on a grouped split where no patient appears in both training and test. The control mattered more than the headline: an independent ICU-stay flag alone was a null result at six months (+0.0014), yet GCS still added +0.0104 on top of it — so the gain is not simply “this patient was sick enough for intensive care”. GCS was left missing for the 72% of admissions where it was never charted, rather than imputed as a normal score.',
+    a: 'In the Oct 2026 extension — the current analysis on the case-study page — GCS components (eye opening, verbal response and movement) added a small, consistent AUROC gain when I retrained inside MIMIC-IV: +0.0138 at 28 days (95% CI 0.0090 to 0.0194) and +0.0086 at six months, on a grouped split where no patient appears in both training and test. The control mattered more than the headline: an independent ICU-stay flag alone was a null result at six months (+0.0014), yet GCS still added +0.0104 on top of it — so the gain is not simply “this patient was sick enough for intensive care”. GCS was left missing for the 72% of admissions where it was never charted, rather than imputed as a normal score.',
   },
   {
     q: 'How did you stop the heart-failure model from cheating?',
@@ -158,7 +158,7 @@ const faqs = [
   },
   {
     q: 'Can the HF-RISK model be used clinically?',
-    a: 'No. It is a research prototype, not a clinical tool. The numbers describe one 2021 cohort plus a single transportability check against 42,990 MIMIC-IV admissions, where AUROC was 0.599 without retraining. It is deliberately framed as research-only.',
+    a: 'No. It is a research prototype, not a clinical tool. The numbers describe one 2021 cohort plus a transportability check against 42,990 MIMIC-IV admissions (0.599 AUROC without retraining), and the current Oct 2026 analysis is a patient-grouped MIMIC-IV retrain testing the GCS signal — still retrospective, with no prospective validation. It is deliberately framed as research-only.'
   },
   {
     q: 'What tools and methods do you use?',
@@ -442,8 +442,8 @@ const itemListSchema = {
       <a class="btn btn-solid" href="/cv/nikunj-prajapati-cv.pdf">
         Download CV (PDF) <span class="arrow" aria-hidden="true">&darr;</span>
       </a>
-      <a class="btn btn-ghost" href="https://hf-risk-heart-failure-ml.onrender.com/" target="_blank" rel="noopener noreferrer">
-        Try the live HF-RISK tool <span class="arrow" aria-hidden="true">&nearr;</span>
+      <a class="btn btn-ghost" href="/hf-risk/tool/">
+        Try the embedded HF-RISK tool <span class="arrow" aria-hidden="true">&rarr;</span>
       </a>
       <a class="btn btn-ghost" href={`mailto:${email}`}>
         Email me <span class="arrow" aria-hidden="true">&rarr;</span>

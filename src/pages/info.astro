@@ -44,7 +44,7 @@ const timeline = [
   {
     date: 'Feb – Mar 2026',
     title: 'HF-RISK dissertation — heart failure outcome prediction',
-    body: 'Four horizons (28-day, 3-month, 6-month mortality; 6-month readmission) on 2,008 Zhang/PhysioNet patients, reduced to 143 predictors by a full leakage audit. XGBoost: 0.710 AUROC internal at six months; 0.599 on MIMIC-IV without retraining. Random Forest wins the short horizons (0.781 / 0.839). Streamlit prototype reviewed with UK cardiologists. Extended later in 2026: a patient-grouped MIMIC-IV retrain showed GCS components add +0.0138 AUROC at 28 days beyond a 34-feature baseline, and still add +0.0104 on top of an ICU-stay control.',
+    body: 'Four horizons (28-day, 3-month, 6-month mortality; 6-month readmission) on 2,008 Zhang/PhysioNet patients, reduced to 143 predictors by a full leakage audit. XGBoost: 0.710 AUROC internal at six months; 0.599 on MIMIC-IV without retraining. Random Forest wins the short horizons (0.781 / 0.839). Current as of the Oct 2026 extension: a patient-grouped MIMIC-IV retrain showed GCS components add +0.0138 AUROC at 28 days beyond a 34-feature baseline, and still add +0.0104 on top of an ICU-stay control. The on-site tool runs that retrained pair of models in the browser.',
     metric: '+0.0138 AUROC',
   },
   {

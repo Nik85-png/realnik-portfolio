@@ -96,35 +96,10 @@ const gcsFields = [
   { name: 'movement', label: 'Motor response', min: 1, max: 6, help: '1 none to 6 obeys commands.' },
 ];
 
-// The outcome-label audit. Figures are stated with where they came from so a
-// reader can tell a local recomputation from a MIMIC-side query.
-const findings = [
-  {
-    k: 'Day 0 is inside the outcome window',
-    v: 'scripts/08_mimic_gcs_extraction.py, lines 77 and 80',
-    body: 'The labels are built with DATE_DIFF(dod, dischtime, DAY) BETWEEN 0 AND 28 and BETWEEN 0 AND 180, so a death on the discharge day counts as a death after discharge. In MIMIC-IV the recorded date of death equals the discharge date for patients who died in hospital, so this is the normal case for them rather than an edge case.',
-  },
-  {
-    k: 'In-hospital death was never identified',
-    v: 'hospital_expire_flag: zero occurrences in the repository',
-    body: 'No script, notebook or model in this project has ever read the in-hospital-death field. That means no arm of the analysis has counted those patients, let alone restricted an evaluation to survivors to discharge — so no number here has yet been computed on post-discharge death alone.',
-  },
-  {
-    k: 'How large the overlap is',
-    v: 'MIMIC-IV extract: 2,323 of 42,990 admissions ended in hospital',
-    body: 'Those admissions are 53% of the 4,416 28-day positives and 25% of the 9,438 six-month positives. The published headline is therefore a mixture of in-hospital and post-discharge death, and any "after discharge" wording attached to it is wrong for those patients.',
-  },
-  {
-    k: 'The dissertation cohort has the same defect',
-    v: 'Zhang cohort cross-tabulation, 2,008 patients, recomputed locally',
-    body: 'Eleven patients are recorded as dying in hospital; all eleven sit inside the 3-month and 6-month death labels and nine of the eleven inside the 28-day label, so 19–30% of the dissertation\'s positives are the wrong kind of death. Eleven in 2,008 (0.55%) is far below the usual heart-failure in-hospital mortality, so treat it as a floor on the exposure rather than a count. Two of the eleven are not labelled 28-day deaths at all, which is internally inconsistent and still needs resolving upstream.',
-  },
-];
-
 const limits = [
   'Research prototype. Not a medical device, not validated for clinical use, and not a substitute for clinical judgement.',
   'The model is retrospective. It was fitted and evaluated on a single MIMIC-IV extract, with no prospective or external validation of this particular pair of models.',
-  'The outcome label mixes deaths in hospital with deaths after discharge (see the audit above). Until the re-extraction lands, a reading describes "death within six months of the discharge date", which is not the same thing as surviving to discharge and then dying.',
+  'The outcome label mixes deaths in hospital with deaths after discharge — audited in full on the case-study page. Until the re-extraction lands, a reading describes "death within six months of the discharge date", which is not the same thing as surviving to discharge and then dying.',
   'Each arm is a separately trained model, so the difference between them is not a pure "effect of GCS" — it also carries the usual variance of two independently fitted ensembles.',
   'GCS is charted for 28.1% of these admissions. If it is left blank here the with-GCS model uses its trained missing-value branch, which is how the majority of the cohort was handled.',
   'The ICU-only subgroup quoted on the case-study page is selected on severity, so it is a collider subgroup and stays descriptive.',
@@ -529,8 +504,8 @@ const limits = [
             28-day AUROC by 0.0138 (0.0090–0.0194) on the same holdout patients. An ICU-stay flag from
             the <code>icustays</code> table does not reproduce that gain at six months (+0.0014, CI
             −0.0012 to 0.0040), so it is not simply "was this patient sick enough for intensive care".
-            That is the honest reading of what has been measured so far — and the audit below is the
-            reason a further test is needed.
+            That is the honest reading of what has been measured so far — and the label audit on the
+            case-study page is the reason a further test is needed.
           </p>
         </article>
 
@@ -547,97 +522,6 @@ const limits = [
           </p>
         </article>
       </div>
-    </section>
-
-<!-- ===== what the extraction turned up ===== -->
-    <section class="section wrap" id="audit" aria-labelledby="audit-h">
-      <SectionHeadInline
-        id="audit-h"
-        num="What the extraction turned up"
-        title="Auditing the labels found a defect — <em>in this project's own numbers.</em>"
-        lede="Re-deriving the outcome labels for the GCS extension meant reading the extraction SQL line by line. What came out of that is not a GCS result: it is a labelling defect that reaches the published headlines and the dissertation's own cohort. It is reported here rather than quietly patched."
-      />
-
-      <div class="find-grid">
-        {findings.map((f, i) => (
-          <article class="find" data-reveal={String(Math.min(i % 4 + 1, 4))}>
-            <p class="find-k">{f.k}</p>
-            <p class="find-v"><code>{f.v}</code></p>
-            <p class="find-b">{f.body}</p>
-          </article>
-        ))}
-      </div>
-
-      <div class="zhang" data-reveal>
-        <div class="zhang-head">
-          <h3>The dissertation cohort, cross-tabulated</h3>
-          <p>
-            2,008 patients from the Zhang / PhysioNet heart-failure cohort, whose records carry both an
-            in-hospital outcome field and the death labels the dissertation was fitted on. Recomputed
-            from the local file in this project.
-          </p>
-        </div>
-        <div class="gcs-table-wrap">
-          <table class="gcs-table">
-            <caption>
-              In-hospital outcome against the labels used for modelling. Every in-hospital death is
-              inside the 3-month and 6-month labels.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Recorded in-hospital outcome</th>
-                <th scope="col">Patients</th>
-                <th scope="col">Labelled 28-day death</th>
-                <th scope="col">Labelled 3-month death</th>
-                <th scope="col">Labelled 6-month death</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><th scope="row">Alive</th><td>1,890</td><td>8</td><td>11</td><td>26</td></tr>
-              <tr class="is-flag"><th scope="row">Died in hospital</th><td>11</td><td>9</td><td>11</td><td>11</td></tr>
-              <tr><th scope="row">Discharge against advice</th><td>107</td><td>20</td><td>20</td><td>20</td></tr>
-              <tr class="is-total"><th scope="row">Total positives</th><td>2,008</td><td>37</td><td>42</td><td>57</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <ul class="zhang-notes">
-          <li><strong>19–30% of each outcome's positives are in-hospital deaths.</strong> All eleven are inside the 3-month and 6-month labels; nine of the eleven are inside the 28-day label.</li>
-          <li><strong>Eleven is a floor, not a count.</strong> 0.55% in-hospital mortality is implausibly low for heart-failure admissions against the usual 4–8%, so the field may under-record or the cohort may have excluded dying patients by construction.</li>
-          <li><strong>Two rows are internally inconsistent.</strong> Two patients recorded as dying in hospital are not labelled 28-day deaths, which is not possible if the labels mean what they say. That points at a defect upstream that has not yet been located.</li>
-          <li><strong>Events per variable.</strong> The dissertation fitted 143 features to 37, 42 and 57 events. Cross-validated AUROC standard deviations ran 0.129–0.165, and a Random Forest reported 0.9315 at 28 days with sensitivity 0.195 — strong ranking, almost no detection. Those point estimates need bootstrapped optimism correction before they are quoted again.</li>
-        </ul>
-      </div>
-
-      <div class="next-grid">
-        <article class="next" data-reveal>
-          <p class="mean-k">What this does not change</p>
-          <ul>
-            <li>The patient-grouped split. Every MIMIC number on this site already used it, with zero patient overlap asserted before scoring.</li>
-            <li>The GCS extraction itself: GCS is left as a genuine missing value rather than imputed, <code>gcs_total</code> is excluded as a fabricated placeholder, and verbal response 0 is treated as untestable.</li>
-            <li>The direction of the leakage-audit result. If anything, a label that includes in-hospital deaths makes the audited numbers look better than they are.</li>
-          </ul>
-        </article>
-        <article class="next" data-reveal="1">
-          <p class="mean-k">What is now in progress</p>
-          <ul>
-            <li>A single re-extraction carrying <code>hospital_expire_flag</code> and <code>deathtime</code>, with the old and corrected label columns side by side so every arm reads from one file.</li>
-            <li>A four-rung ladder — row-level split with old labels, grouped split with old labels, grouped split with day 0 excluded, grouped split restricted to survivors to discharge — to separate patient-overlap inflation from outcome-window inflation.</li>
-            <li>The mechanism test: the GCS increment for <em>in-hospital</em> death against post-discharge death.</li>
-            <li>Competing risks rather than survivor-only exclusion, so the whole cohort stays in the analysis.</li>
-            <li>A variable-availability statement, because part of the baseline is derived from ICD codes that are finalised after discharge.</li>
-          </ul>
-        </article>
-      </div>
-
-      <aside class="correction" role="note" data-reveal>
-        <p class="correction-k">Correction, in the open</p>
-        <p>
-          The affected numbers are already public in four places: this site, the CV, the dissertation and
-          the repository README. All four will move together once the corrected extract exists, and this
-          page will carry the note rather than a silent edit. A discrepancy between a paper and the site
-          describing it would be a far worse outcome than lower numbers.
-        </p>
-      </aside>
     </section>
 
 <!-- ===== provenance and limits ===== -->
@@ -686,9 +570,9 @@ python scripts/11_export_web_model.py</code></pre>
           </p>
           <p class="prov-p">
             The model targets <strong>death within six months of the discharge date</strong>, which — as the
-            audit above explains — includes deaths in hospital. That is a limitation of the label, not a
-            detail, and it is the reason the mechanism test is the next piece of work rather than a
-            footnote.
+            label audit on the case-study page explains — includes deaths in hospital. That is a limitation
+            of the label, not a detail, and it is the reason the mechanism test is the next piece of work
+            rather than a footnote.
           </p>
         </article>
       </div>
@@ -713,7 +597,6 @@ python scripts/11_export_web_model.py</code></pre>
     <nav class="tool-foot wrap" aria-label="Page sections">
       <a href="#reading">The reading</a>
       <a href="#meaning">How to read it</a>
-      <a href="#audit">The audit</a>
       <a href="#provenance">Provenance</a>
       <a href={CASE_URL}>Case study</a>
     </nav>
@@ -732,7 +615,8 @@ python scripts/11_export_web_model.py</code></pre>
   .tool { --card: color-mix(in oklch, var(--bg) 93%, white); }
   [data-theme='dark'] .tool { --card: color-mix(in oklch, var(--bg) 93%, black); }
 
-  .tool .stat-strip { grid-template-columns: repeat(3, 1fr); }
+  .tool .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 520px) { .tool .stat-strip { grid-template-columns: 1fr; } }
   @media (max-width: 860px) {
     .tool .stat-strip { grid-template-columns: 1fr; }
     .tool .stat { border-left: 0; }
@@ -1265,59 +1149,6 @@ python scripts/11_export_web_model.py</code></pre>
   .mean-card p { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
   .mean-card p em { font-style: italic; color: var(--fg); }
   .mean-card code { font-size: 12px; }
-
-  /* ---------- findings ---------- */
-
-  .find-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(16px, 2vw, 26px); }
-  @media (max-width: 820px) { .find-grid { grid-template-columns: 1fr; } }
-
-  .find { border-top: 2px solid var(--theme-complementary); padding-top: 16px; }
-  .find-k { font-family: var(--font-display); font-size: 16px; margin: 0 0 8px; }
-  .find-v { font-size: 11.4px; margin: 0 0 10px; color: var(--fg-muted); }
-  .find-v code { font-family: var(--font-body); font-size: 11px; word-break: break-word; }
-  .find-b { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
-
-  .zhang { margin-top: clamp(28px, 3.4vw, 48px); }
-  .zhang-head h3 { font-size: clamp(20px, 2.2vw, 26px); margin-bottom: 0.4em; }
-  .zhang-head p { font-size: 13.2px; color: var(--fg-muted); max-width: 78ch; margin: 0 0 18px; }
-
-  .gcs-table-wrap { border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
-  .gcs-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; }
-  .gcs-table caption { caption-side: top; text-align: left; font-size: 11.6px; color: var(--fg-muted); padding: 12px 14px; border-bottom: 1px solid var(--rule-soft); }
-  .gcs-table th, .gcs-table td { text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
-  .gcs-table thead th { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-muted); font-weight: 400; }
-  .gcs-table tbody th { text-align: left; font-weight: 400; font-family: var(--font-body); }
-  .gcs-table tr:last-child th, .gcs-table tr:last-child td { border-bottom: 0; }
-  .gcs-table .is-flag td, .gcs-table .is-flag th { background: color-mix(in oklch, var(--theme-complementary) 12%, transparent); }
-  .gcs-table .is-total th, .gcs-table .is-total td { border-top: 1px solid var(--rule); color: var(--fg-muted); }
-
-  .zhang-notes { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
-  .zhang-notes li { font-size: 13px; color: var(--fg-muted); padding-left: 18px; position: relative; max-width: 92ch; }
-  .zhang-notes li::before { content: ''; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--theme-complementary); }
-  .zhang-notes strong { color: var(--fg); }
-
-  .next-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 2.4vw, 34px); margin-top: clamp(28px, 3.4vw, 48px); }
-  @media (max-width: 820px) { .next-grid { grid-template-columns: 1fr; } }
-  .next { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); padding: clamp(18px, 2.2vw, 26px); }
-  .next ul { margin: 0; padding-left: 18px; display: grid; gap: 9px; }
-  .next li { font-size: 12.8px; color: var(--fg-muted); }
-  .next code { font-size: 11.4px; }
-
-  .correction {
-    margin-top: clamp(24px, 3vw, 40px);
-    border: 1px solid color-mix(in oklch, var(--theme-complementary) 40%, transparent);
-    background: color-mix(in oklch, var(--theme-complementary) 8%, var(--bg));
-    border-radius: 8px;
-    padding: clamp(18px, 2.4vw, 28px);
-    display: grid;
-    gap: 10px;
-    grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  @media (max-width: 720px) { .correction { grid-template-columns: 1fr; } }
-  .correction-k { font-family: var(--font-display); font-size: 15px; margin: 0; }
-  .correction p:last-child { font-size: 13.2px; color: var(--fg-muted); margin: 0; }
 
   /* ---------- provenance ---------- */
 

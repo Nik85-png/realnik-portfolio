@@ -519,6 +519,35 @@ html.js [data-reveal].is-visible {
   background: linear-gradient(100deg, transparent, color-mix(in oklch, white 20%, transparent), transparent);
 }
 
+/* Attention cue for the primary tool CTA: a slow halo that breathes, plus
+   an occasional replay of the hover sweep, so the button reads as the thing
+   to click without shouting. `.btn.magnetic` owns the element's own
+   transform, so the cue works through `filter` and the existing sheen
+   pseudo-element instead. Both are animations, so the reduced-motion block
+   below switches them off. */
+
+.btn-attn { filter: drop-shadow(0 0 0 transparent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn-attn { animation: btn-attn-glow 4.6s ease-in-out infinite; }
+  .btn-attn::after { animation: btn-attn-sheen 8s ease-in-out infinite; }
+}
+
+@keyframes btn-attn-glow {
+  0%,
+  100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 5px 16px color-mix(in oklch, var(--fg) 30%, transparent)); }
+}
+
+/* 420% is the strip's own width, which carries it from left:-80% (off the
+   left edge) across to the far edge of the button. */
+@keyframes btn-attn-sheen {
+  0%,
+  64% { transform: skewX(-18deg) translateX(0); }
+  88%,
+  100% { transform: skewX(-18deg) translateX(420%); }
+}
+
 /* ---------- stat strip ---------- */
 
 .stat-strip {
