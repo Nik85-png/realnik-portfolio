@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Crawl-friendly: the whole portfolio is public.
+# Generated at build time by @astrojs/sitemap — see astro.config.mjs.
+Sitemap: https://realnik.co.uk/sitemap-index.xml

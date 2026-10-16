@@ -1,36 +1,27 @@
 {
-    "name": "personal-site",
-    "version": "0.2.0",
-    "scripts": {
-        "dev": "next dev",
-        "build": "next build",
-        "start": "next start"
-    },
-    "dependencies": {
-        "@tailwindcss/postcss": "^4.0.12",
-        "classnames": "^2.5.1",
-        "dayjs": "^1.11.11",
-        "front-matter": "^4.0.2",
-        "markdown-to-jsx": "^7.7.1",
-        "next": "^15.2.1",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "react-syntax-highlighter": "^15.6.1",
-        "tailwindcss": "^4.0.12"
-    },
-    "devDependencies": {
-        "@stackbit/cms-git": "^1.0.30",
-        "@stackbit/types": "^2.1.11",
-        "@tailwindcss/typography": "^0.5.16",
-        "@types/glob": "^8.1.0",
-        "@types/react": "^19.0.1",
-        "@types/react-syntax-highlighter": "^15.5.13",
-        "eslint": "^9.21.0",
-        "eslint-config-next": "^15.2.0",
-        "js-yaml": "^4.1.0",
-        "postcss": "^8.5.3",
-        "prettier": "^3.5.2",
-        "typescript": "^5.8.2"
-    },
-    "license": "MIT"
+  "name": "realnik-redesign",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "test": "node scripts/smoke-test.mjs",
+    "check:live": "node scripts/check-live.mjs",
+    "self-host-fonts": "node scripts/self-host-fonts.mjs",
+    "build": "astro build && node scripts/minify-data.mjs",
+    "heroku-postbuild": "npm run build",
+    "start": "node server.mjs",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "5.18.2",
+    "pdfkit": "^0.20.2",
+    "resend": "^6.32.1"
+  },
+  "devDependencies": {
+    "@astrojs/sitemap": "^3.7.4"
+  }
 }

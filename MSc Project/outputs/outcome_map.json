@@ -1,6 +1,0 @@
-{
-  "28d_death": "death.within.28.days",
-  "3m_death": "death.within.3.months",
-  "6m_death": "death.within.6.months",
-  "6m_readmission": "re.admission.within.6.months"
-}

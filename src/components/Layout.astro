@@ -1,0 +1,243 @@
+---
+import Nav from './Nav.astro';
+import Footer from './Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  current?: string;
+  /** Extra terms for <meta name="keywords">. */
+  keywords?: string[];
+  ogImage?: string;
+  ogType?: 'website' | 'profile' | 'article';
+  /** Extra schema.org nodes merged into the page's @graph. */
+  schema?: Record<string, unknown> | Record<string, unknown>[];
+  /** Keep the page out of search results (used by the 404 page). */
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description,
+  keywords = [],
+  ogImage = '/images/nikunj-profile.jpg',
+  ogType = 'website',
+  schema,
+  noindex = false,
+} = Astro.props;
+
+const SITE = 'https://realnik.co.uk';
+const SITE_NAME = 'Nikunj Prajapati';
+const EMAIL = 'prajapatinick85@gmail.com';
+const GITHUB = 'https://github.com/Nik85-png';
+const LINKEDIN = 'https://www.linkedin.com/in/nikunj-prajapati-b8a3b7232';
+
+// Keep titles in a search-result-friendly length: only append the name when
+// the page hasn't already put it in the title.
+const fullTitle = title.includes(SITE_NAME) ? title : `${title} — ${SITE_NAME}`;
+const canonical = new URL(Astro.url.pathname, SITE).href;
+const ogImageUrl = new URL(ogImage, SITE).href;
+
+// Site-wide identity nodes. Page-level nodes are appended via the `schema`
+// prop so every URL ships one coherent @graph instead of scattered scripts.
+const personSchema: Record<string, unknown> = {
+  '@type': 'Person',
+  '@id': `${SITE}/#person`,
+  name: 'Nikunj Prajapati',
+  url: SITE,
+  image: `${SITE}/images/nikunj-profile.jpg`,
+  email: `mailto:${EMAIL}`,
+  jobTitle: 'Data Analyst — Clinical ML & Behavioural Analytics',
+  description:
+    'MSc Data Analytics postgraduate in London building leakage-clean predictive models, interactive behavioural analysis tools and honest reporting.',
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'London',
+    addressCountry: 'GB',
+  },
+  nationality: { '@type': 'Country', name: 'United Kingdom' },
+  alumniOf: [
+    {
+      '@type': 'CollegeOrUniversity',
+      name: 'London Metropolitan University',
+      sameAs: 'https://www.londonmet.ac.uk/',
+    },
+    { '@type': 'CollegeOrUniversity', name: 'Gujarat University' },
+  ],
+  knowsAbout: [
+    'Machine learning',
+    'Heart failure outcome prediction',
+    'Clinical predictive modelling',
+    'Survival analysis',
+    'SHAP explainability',
+    'Model leakage auditing',
+    'Calibration and decision curve analysis',
+    'Behavioural data analysis',
+    'Card sorting and cognitive strategy',
+    'Python',
+    'pandas',
+    'scikit-learn',
+    'XGBoost',
+    'Streamlit',
+    'Plotly',
+    'SQL',
+    'Data visualisation',
+  ],
+  hasCredential: [
+    {
+      '@type': 'EducationalOccupationalCredential',
+      credentialCategory: 'degree',
+      name: 'MSc Data Analytics — London Metropolitan University',
+    },
+    {
+      '@type': 'EducationalOccupationalCredential',
+      credentialCategory: 'degree',
+      name: 'B.Sc. Mathematics — Gujarat University',
+    },
+    {
+      '@type': 'EducationalOccupationalCredential',
+      credentialCategory: 'degree',
+      name: 'Bachelor of Education — Gujarat University',
+    },
+  ],
+  sameAs: [GITHUB, LINKEDIN],
+};
+
+const websiteSchema: Record<string, unknown> = {
+  '@type': 'WebSite',
+  '@id': `${SITE}/#website`,
+  url: SITE,
+  name: `${SITE_NAME} — Data Analytics Portfolio`,
+  description:
+    'Portfolio of Nikunj Prajapati: heart-failure machine-learning research, behavioural card-sorting analysis, and data work documented end to end.',
+  publisher: { '@id': `${SITE}/#person` },
+  inLanguage: 'en-GB',
+};
+
+const pageNodes = schema ? (Array.isArray(schema) ? schema : [schema]) : [];
+const graph = {
+  '@context': 'https://schema.org',
+  '@graph': [personSchema, websiteSchema, ...pageNodes],
+};
+---
+
+<!doctype html>
+<html lang="en-GB" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content={SITE_NAME} />
+    {keywords.length > 0 && <meta name="keywords" content={keywords.join(', ')} />}
+    {noindex ? (
+      <meta name="robots" content="noindex, follow" />
+    ) : (
+      <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    )}
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#F2EFE8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <!-- Open Graph / social preview -->
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content={`${SITE_NAME} — Data Analytics`} />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:alt" content={`${SITE_NAME} — data analytics portfolio`} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
+    <!-- Structured data: one @graph per page (Person + WebSite + page nodes) -->
+    <script type="application/ld+json" set:html={JSON.stringify(graph)} is:inline />
+
+    <!-- Prevent theme flash: apply saved/system theme before paint. The `js`
+         class gates the reveal animation so no-JS/no-crawler views stay visible. -->
+    <script is:inline>
+      (function () {
+        document.documentElement.classList.add('js');
+        try {
+          var saved = localStorage.getItem('realnik-theme');
+          var theme = saved ||
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- Fonts are self-hosted (public/fonts, declared in src/styles/fonts.css),
+         so no render-blocking third-party stylesheet and no visitor IP sent to
+         Google. These two faces cover the first screen: the variable display
+         face used by every heading, and DM Mono 400 for body copy. -->
+    <link
+      rel="preload"
+      href="/fonts/azeret-mono-normal-300-700-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/dm-mono-normal-400-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="bg-grain" aria-hidden="true"></div>
+    <Nav />
+    <!-- tabindex="-1" so the skip link moves focus here, not just the scroll position. -->
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer />
+    <script src="../scripts/main.js"></script>
+    <script is:inline>
+      // Minimal progressive-enhancement form submitter for the contact form.
+      (function () {
+        var forms = document.querySelectorAll('form[data-endpoint]');
+        if (!forms.length) return;
+        Array.from(forms).forEach(function (form) {
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var status = form.querySelector('.form-status');
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+            if (status) { status.hidden = false; status.textContent = 'Sending…'; }
+            fetch(form.getAttribute('data-endpoint'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(Object.fromEntries(new FormData(form))),
+            })
+              .then(function (r) { return r.json().catch(function () { return {}; }); })
+              .then(function (json) {
+                if (json && json.ok) {
+                  if (status) { status.hidden = false; status.textContent = 'Thanks — I will reply within 48h.'; }
+                  if (form) { form.querySelector('.form-fields') && (form.querySelector('.form-fields').style.display = 'none'); }
+                  form.reset();
+                } else {
+                  if (status) { status.hidden = false; status.textContent = 'Something went wrong — please email me directly.'; }
+                  if (btn) { btn.disabled = false; btn.textContent = 'Send message'; }
+                }
+              })
+              .catch(function () {
+                if (status) { status.hidden = false; status.textContent = 'Something went wrong — please email me directly.'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Send message'; }
+              });
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>
